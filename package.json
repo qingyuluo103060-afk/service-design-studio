@@ -1,0 +1,11 @@
+{
+  "name": "service-design-studio-pwa",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node tests/app-core.test.mjs && node tests/server.test.mjs && node tests/public-api.test.mjs && node tests/account-auth.test.mjs",
+    "check": "node --check src/app.js && node --check server.mjs"
+  }
+}
