@@ -267,7 +267,8 @@ export function getPublicConfig(env = process.env) {
     providers: PROVIDERS.map((provider) => ({
       id: provider.id,
       name: provider.name,
-      configured: Boolean(getProviderKey(provider, env) && getProviderBaseUrl(provider, env)),
+      configured: false,
+      supportsUserKey: true,
     })),
   };
 }
@@ -300,10 +301,10 @@ async function callModel(payload, env, fetchImpl) {
     return { ok: false, error: '暂不支持该模型服务商' };
   }
 
-  const apiKey = getProviderKey(provider, env);
-  const baseUrl = getProviderBaseUrl(provider, env);
+  const apiKey = getPayloadApiKey(payload);
+  const baseUrl = getPayloadBaseUrl(payload) || getProviderBaseUrl(provider, env);
   if (!apiKey || !baseUrl) {
-    return { ok: false, error: `${provider.name} 尚未在服务器配置 API Key 或 Base URL` };
+    return { ok: false, error: `请先为 ${provider.name} 填写个人 API Key` };
   }
 
   const prompt = String(payload.prompt || '').trim();
@@ -311,7 +312,7 @@ async function callModel(payload, env, fetchImpl) {
     return { ok: false, error: '请输入要提交给模型的任务说明' };
   }
 
-  const model = String(env[provider.modelEnv] || provider.defaultModel).trim();
+  const model = String(payload.model || env[provider.modelEnv] || provider.defaultModel).trim();
   const response = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -368,28 +369,38 @@ function getProviderBaseUrl(provider, env) {
   return String(env[provider.baseUrlEnv] || provider.defaultBaseUrl || '').trim();
 }
 
+function getPayloadApiKey(payload) {
+  return String(payload.apiKey || '').trim();
+}
+
+function getPayloadBaseUrl(payload) {
+  const value = String(payload.baseUrl || '').trim();
+  if (!value) return '';
+  return value;
+}
+
 function getRequestHeader(request, headerName) {
   const value = request.headers[headerName.toLowerCase()];
   return Array.isArray(value) ? value[0] : value;
 }
 
 async function registerUser(dataDir, sessions, payload) {
-  const email = normalizeEmail(payload.email);
+  const studentId = normalizeStudentId(payload.studentId);
   const password = String(payload.password || '');
   const name = String(payload.name || '').trim();
-  if (!name || !email || password.length < 6) {
-    return { status: 400, ok: false, error: '请填写姓名、有效邮箱和至少 6 位密码' };
+  if (!name || !isValidStudentId(studentId) || password.length < 6) {
+    return { status: 400, ok: false, error: '请填写姓名、有效学号和至少 6 位密码。学号需为 9 位数字，格式为 21XX17XXX。' };
   }
 
   const users = await readUsers(dataDir);
-  if (users.some((user) => user.email === email)) {
-    return { status: 409, ok: false, error: '该邮箱已注册，请直接登录' };
+  if (users.some((user) => user.studentId === studentId)) {
+    return { status: 409, ok: false, error: '该学号已注册，请直接登录' };
   }
 
   const user = {
     id: `u_${randomBytes(8).toString('hex')}`,
     name,
-    email,
+    studentId,
     className: String(payload.className || '').trim(),
     role: 'student',
     createdAt: new Date().toISOString(),
@@ -403,12 +414,12 @@ async function registerUser(dataDir, sessions, payload) {
 }
 
 async function loginUser(dataDir, sessions, payload) {
-  const email = normalizeEmail(payload.email);
+  const studentId = normalizeStudentId(payload.studentId);
   const password = String(payload.password || '');
   const users = await readUsers(dataDir);
-  const user = users.find((item) => item.email === email);
+  const user = users.find((item) => item.studentId === studentId);
   if (!user || !verifyPassword(password, user.passwordHash)) {
-    return { ok: false, error: '邮箱或密码不正确' };
+    return { ok: false, error: '学号或密码不正确' };
   }
   const publicUser = toPublicUser(user);
   return { ok: true, token: createSession(sessions, publicUser), user: publicUser };
@@ -458,14 +469,18 @@ function toPublicUser(user) {
   return {
     id: user.id,
     name: user.name,
-    email: user.email,
+    studentId: user.studentId || '',
     className: user.className || '',
     role: user.role || 'student',
   };
 }
 
-function normalizeEmail(email) {
-  return String(email || '').trim().toLowerCase();
+function normalizeStudentId(studentId) {
+  return String(studentId || '').trim();
+}
+
+function isValidStudentId(studentId) {
+  return /^21\d{2}17\d{3}$/.test(studentId);
 }
 
 function withoutStatus(result) {

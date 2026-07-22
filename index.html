@@ -15,7 +15,7 @@
         <span class="brand-mark">SD</span>
         <p class="eyebrow">Public Classroom</p>
         <h2>进入服务设计课堂</h2>
-        <p class="muted">学生可注册账号后进入项目工作台。模型 API Key 由教师在服务器端配置，不会暴露给学生浏览器。</p>
+        <p class="muted">学生用学号注册后进入项目工作台。大模型 API Key 由本人填写，默认只保存在当前浏览器。</p>
         <div id="authTabs" class="auth-tabs">
           <button class="segmented active" data-auth-mode="login">登录</button>
           <button class="segmented" data-auth-mode="register">注册</button>
@@ -23,8 +23,8 @@
         </div>
         <div id="loginForm" class="auth-form">
           <label>
-            邮箱
-            <input id="loginEmail" type="email" autocomplete="email" placeholder="student@example.com" />
+            学号
+            <input id="loginStudentId" type="text" inputmode="numeric" autocomplete="username" maxlength="9" placeholder="21XX17XXX" />
           </label>
           <label>
             密码
@@ -42,9 +42,10 @@
             <input id="registerClass" type="text" placeholder="产品设计1班" />
           </label>
           <label>
-            邮箱
-            <input id="registerEmail" type="email" autocomplete="email" />
+            学号
+            <input id="registerStudentId" type="text" inputmode="numeric" maxlength="9" placeholder="9位数字，如 210117001" />
           </label>
+          <p class="field-hint">学号规则：9 位数字，第 1-2 位为 21，第 5-6 位为 17。</p>
           <label>
             密码
             <input id="registerPassword" type="password" autocomplete="new-password" placeholder="至少 6 位" />
@@ -263,12 +264,27 @@
                 选择模型
                 <select id="modelProvider"></select>
               </label>
+              <div class="model-config-grid">
+                <label>
+                  个人 API Key
+                  <input id="modelApiKey" type="password" autocomplete="off" placeholder="仅保存在当前浏览器" />
+                </label>
+                <label>
+                  模型名
+                  <input id="modelName" type="text" placeholder="deepseek-chat / gpt-4o-mini" />
+                </label>
+              </div>
+              <label>
+                自定义 Base URL（可选）
+                <input id="modelBaseUrl" type="url" placeholder="通常可留空，使用默认接口地址" />
+              </label>
+              <button id="saveModelSettings" class="ghost">保存我的模型设置</button>
               <label>
                 任务说明
                 <textarea id="modelPrompt" rows="5" placeholder="例如：请根据当前阶段证据，生成下一轮访谈问题和需求筛选建议。"></textarea>
               </label>
               <button id="generateWithModel">生成建议</button>
-              <div id="modelResult" class="model-result">配置服务器 API Key 后，可在这里生成针对当前项目的服务设计建议。</div>
+              <div id="modelResult" class="model-result">请先填写并保存个人 API Key，再生成针对当前项目的服务设计建议。</div>
             </div>
           </section>
         </aside>

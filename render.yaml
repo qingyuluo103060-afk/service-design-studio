@@ -14,20 +14,6 @@ services:
         value: /var/data
       - key: APP_ACCESS_CODE
         sync: false
-      - key: DEEPSEEK_API_KEY
-        sync: false
-      - key: DEEPSEEK_MODEL
-        value: deepseek-chat
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_MODEL
-        value: gpt-4.1-mini
-      - key: MOONSHOT_API_KEY
-        sync: false
-      - key: ZHIPU_API_KEY
-        sync: false
-      - key: DOUBAO_API_KEY
-        sync: false
     disk:
       name: service-design-data
       mountPath: /var/data

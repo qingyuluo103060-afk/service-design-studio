@@ -1,6 +1,6 @@
 # Render 部署操作说明
 
-目标：把本项目部署成一个可公开访问的网址，学生可注册、登录，并在网页内调用教师配置好的大模型接口。
+目标：把本项目部署成一个可公开访问的网址，学生可用学号注册、登录，并在网页内自主接入自己的大模型 API Key。
 
 ## 1. 已准备好的部署文件
 
@@ -45,19 +45,7 @@ APP_ACCESS_CODE=教师备用口令
 DATA_DIR=/var/data
 ```
 
-至少配置一个大模型，例如 DeepSeek：
-
-```text
-DEEPSEEK_API_KEY=你的 DeepSeek API Key
-DEEPSEEK_MODEL=deepseek-chat
-```
-
-也可以配置 OpenAI：
-
-```text
-OPENAI_API_KEY=你的 OpenAI API Key
-OPENAI_MODEL=gpt-4.1-mini
-```
+不需要在 Render 里配置统一的大模型 API Key。学生在网页右侧“AI 方法助手”中填写个人 API Key，Key 默认只保存在学生自己的浏览器本地。
 
 ## 4. 持久化数据
 
@@ -88,10 +76,10 @@ https://service-design-studio.onrender.com
 
 1. 打开网址。
 2. 点击“注册”。
-3. 填写姓名、班级、邮箱、密码。
+3. 填写姓名、班级、学号、密码。学号需为 9 位数字，格式为 `21XX17XXX`。
 4. 登录进入工作台。
 5. 输入项目主题和调研证据。
-6. 在“AI 方法助手”选择已配置模型，点击“生成建议”。
+6. 在“AI 方法助手”填写个人 API Key、模型名，点击“生成建议”。
 7. 刷新页面后再次登录，确认数据仍在。
 
 ## 6. 我当前无法替您直接完成的部分
