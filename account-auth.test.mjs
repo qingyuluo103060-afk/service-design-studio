@@ -17,6 +17,7 @@ const STORAGE_KEY = 'service-design-studio-v01';
 const ACCESS_CODE_KEY = 'service-design-access-code';
 const SESSION_TOKEN_KEY = 'service-design-session-token';
 const MODEL_SETTINGS_KEY = 'service-design-model-settings';
+const REQUEST_TIMEOUT_MS = 15000;
 
 const sampleStudentsText = `20260101 陈一 产品设计1班
 20260102 林二 产品设计1班
@@ -355,14 +356,14 @@ async function registerAccount() {
 
 async function authenticateAccount(url, payload) {
   setAuthBusy(true);
-  els.authMessage.textContent = '';
+  els.authMessage.textContent = '正在连接课堂服务器，请稍候...';
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const result = await response.json();
+    const result = await safeJson(response);
     if (!response.ok || !result.ok) {
       els.authMessage.textContent = result.error || '账号验证失败，请检查填写内容。';
       return;
@@ -376,8 +377,10 @@ async function authenticateAccount(url, payload) {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
-  } catch {
-    els.authMessage.textContent = '无法连接课堂服务器，请稍后重试。';
+  } catch (error) {
+    els.authMessage.textContent = error.name === 'AbortError'
+      ? '课堂服务器响应超时，请刷新页面后重试。'
+      : '无法连接课堂服务器，请稍后重试。';
   } finally {
     setAuthBusy(false);
   }
@@ -397,6 +400,7 @@ async function unlockWithAccessCode() {
   }
   accessCode = nextCode;
   sessionToken = '';
+  els.authMessage.textContent = '正在验证课堂口令...';
   try {
     const response = await apiFetch('./api/auth/check', { method: 'POST' });
     if (!response.ok) {
@@ -411,8 +415,8 @@ async function unlockWithAccessCode() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
-  } catch {
-    showAuthGate('无法连接课堂服务器，请稍后重试。');
+  } catch (error) {
+    showAuthGate(error.name === 'AbortError' ? '课堂服务器响应超时，请刷新页面后重试。' : '无法连接课堂服务器，请稍后重试。');
   }
 }
 
@@ -882,10 +886,12 @@ function apiFetch(url, options = {}) {
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (saved?.groups?.length) return saved;
+    const result = validateClassroomState(saved);
+    if (result.ok) return result.value;
   } catch {
-    localStorage.removeItem(STORAGE_KEY);
+    // Fall through to reset corrupt local state.
   }
+  localStorage.removeItem(STORAGE_KEY);
   return createSampleState();
 }
 
@@ -958,4 +964,18 @@ function escapeHtml(value) {
 function formatDate(value) {
   if (!value) return '未记录';
   return new Date(value).toLocaleString('zh-CN', { hour12: false });
+}
+
+function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
+async function safeJson(response) {
+  try {
+    return await response.json();
+  } catch {
+    return { ok: false, error: '服务器返回内容无法解析，请刷新页面后重试。' };
+  }
 }
