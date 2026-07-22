@@ -16,6 +16,8 @@ import {
 const STORAGE_KEY = 'service-design-studio-v01';
 const ACCESS_CODE_KEY = 'service-design-access-code';
 const SESSION_TOKEN_KEY = 'service-design-session-token';
+const MODEL_SETTINGS_KEY = 'service-design-model-settings';
+const REQUEST_TIMEOUT_MS = 15000;
 
 const sampleStudentsText = `20260101 陈一 产品设计1班
 20260102 林二 产品设计1班
@@ -34,6 +36,7 @@ let backendSaveTimer = null;
 let appConfig = { authRequired: false, providers: [] };
 let accessCode = sessionStorage.getItem(ACCESS_CODE_KEY) || '';
 let sessionToken = sessionStorage.getItem(SESSION_TOKEN_KEY) || '';
+let modelSettings = loadModelSettings();
 let activeAuthMode = 'login';
 let activeRole = 'teacher';
 let activeGroupId = state.groups[0]?.id || 'g1';
@@ -79,12 +82,12 @@ const els = {
   loginForm: document.querySelector('#loginForm'),
   registerForm: document.querySelector('#registerForm'),
   codeForm: document.querySelector('#codeForm'),
-  loginEmail: document.querySelector('#loginEmail'),
+  loginStudentId: document.querySelector('#loginStudentId'),
   loginPassword: document.querySelector('#loginPassword'),
   loginAccount: document.querySelector('#loginAccount'),
   registerName: document.querySelector('#registerName'),
   registerClass: document.querySelector('#registerClass'),
-  registerEmail: document.querySelector('#registerEmail'),
+  registerStudentId: document.querySelector('#registerStudentId'),
   registerPassword: document.querySelector('#registerPassword'),
   registerAccount: document.querySelector('#registerAccount'),
   accessCodeInput: document.querySelector('#accessCodeInput'),
@@ -92,6 +95,10 @@ const els = {
   authMessage: document.querySelector('#authMessage'),
   modelProvider: document.querySelector('#modelProvider'),
   modelStatus: document.querySelector('#modelStatus'),
+  modelApiKey: document.querySelector('#modelApiKey'),
+  modelName: document.querySelector('#modelName'),
+  modelBaseUrl: document.querySelector('#modelBaseUrl'),
+  saveModelSettings: document.querySelector('#saveModelSettings'),
   modelPrompt: document.querySelector('#modelPrompt'),
   generateWithModel: document.querySelector('#generateWithModel'),
   modelResult: document.querySelector('#modelResult'),
@@ -249,6 +256,11 @@ function bindEvents() {
   els.loginAccount.addEventListener('click', loginAccount);
   els.registerAccount.addEventListener('click', registerAccount);
   els.unlockApp.addEventListener('click', unlockWithAccessCode);
+  els.saveModelSettings.addEventListener('click', saveModelSettings);
+  els.modelProvider.addEventListener('change', () => {
+    modelSettings.provider = els.modelProvider.value;
+    applyModelSettingsToForm();
+  });
   els.loginPassword.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') loginAccount();
   });
@@ -308,7 +320,7 @@ function showAuthGate(message = '') {
   renderAuthMode();
   els.accessCodeInput.value = accessCode;
   els.authMessage.textContent = message;
-  const focusTarget = activeAuthMode === 'register' ? els.registerName : activeAuthMode === 'code' ? els.accessCodeInput : els.loginEmail;
+  const focusTarget = activeAuthMode === 'register' ? els.registerName : activeAuthMode === 'code' ? els.accessCodeInput : els.loginStudentId;
   setTimeout(() => focusTarget.focus(), 0);
 }
 
@@ -328,7 +340,7 @@ function renderAuthMode() {
 
 async function loginAccount() {
   await authenticateAccount('./api/auth/login', {
-    email: els.loginEmail.value,
+    studentId: els.loginStudentId.value,
     password: els.loginPassword.value,
   });
 }
@@ -337,21 +349,21 @@ async function registerAccount() {
   await authenticateAccount('./api/auth/register', {
     name: els.registerName.value,
     className: els.registerClass.value,
-    email: els.registerEmail.value,
+    studentId: els.registerStudentId.value,
     password: els.registerPassword.value,
   });
 }
 
 async function authenticateAccount(url, payload) {
   setAuthBusy(true);
-  els.authMessage.textContent = '';
+  els.authMessage.textContent = '正在连接课堂服务器，请稍候...';
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const result = await response.json();
+    const result = await safeJson(response);
     if (!response.ok || !result.ok) {
       els.authMessage.textContent = result.error || '账号验证失败，请检查填写内容。';
       return;
@@ -365,8 +377,10 @@ async function authenticateAccount(url, payload) {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
-  } catch {
-    els.authMessage.textContent = '无法连接课堂服务器，请稍后重试。';
+  } catch (error) {
+    els.authMessage.textContent = error.name === 'AbortError'
+      ? '课堂服务器响应超时，请刷新页面后重试。'
+      : '无法连接课堂服务器，请稍后重试。';
   } finally {
     setAuthBusy(false);
   }
@@ -386,6 +400,7 @@ async function unlockWithAccessCode() {
   }
   accessCode = nextCode;
   sessionToken = '';
+  els.authMessage.textContent = '正在验证课堂口令...';
   try {
     const response = await apiFetch('./api/auth/check', { method: 'POST' });
     if (!response.ok) {
@@ -400,8 +415,8 @@ async function unlockWithAccessCode() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
-  } catch {
-    showAuthGate('无法连接课堂服务器，请稍后重试。');
+  } catch (error) {
+    showAuthGate(error.name === 'AbortError' ? '课堂服务器响应超时，请刷新页面后重试。' : '无法连接课堂服务器，请稍后重试。');
   }
 }
 
@@ -414,21 +429,53 @@ function renderModelProviders() {
   }
 
   els.modelProvider.innerHTML = providers.map((provider) => `
-    <option value="${escapeHtml(provider.id)}" ${provider.configured ? '' : 'disabled'}>
-      ${escapeHtml(provider.name)}${provider.configured ? '' : '（未配置）'}
+    <option value="${escapeHtml(provider.id)}">
+      ${escapeHtml(provider.name)}
     </option>
   `).join('');
 
-  const configured = providers.filter((provider) => provider.configured);
-  els.modelStatus.textContent = configured.length ? `${configured.length} 个可用` : '未配置';
-  els.modelProvider.value = configured[0]?.id || '';
+  els.modelStatus.textContent = '个人接入';
+  els.modelProvider.value = modelSettings.provider || providers[0]?.id || '';
+  applyModelSettingsToForm();
+}
+
+function applyModelSettingsToForm() {
+  const providerSettings = getCurrentProviderSettings();
+  els.modelApiKey.value = providerSettings.apiKey || '';
+  els.modelName.value = providerSettings.model || defaultModelName(els.modelProvider.value);
+  els.modelBaseUrl.value = providerSettings.baseUrl || '';
+}
+
+function saveModelSettings() {
+  const provider = els.modelProvider.value;
+  if (!provider) {
+    els.modelResult.textContent = '请先选择模型服务商。';
+    return;
+  }
+  modelSettings.provider = provider;
+  modelSettings.providers = modelSettings.providers || {};
+  modelSettings.providers[provider] = {
+    apiKey: els.modelApiKey.value.trim(),
+    model: els.modelName.value.trim(),
+    baseUrl: els.modelBaseUrl.value.trim(),
+  };
+  localStorage.setItem(MODEL_SETTINGS_KEY, JSON.stringify(modelSettings));
+  els.modelStatus.textContent = modelSettings.providers[provider].apiKey ? '已保存' : '缺少 Key';
+  els.modelResult.textContent = modelSettings.providers[provider].apiKey
+    ? '个人模型设置已保存到当前浏览器。'
+    : '模型设置已保存，但生成建议前仍需填写 API Key。';
 }
 
 async function generateModelAdvice() {
   const provider = els.modelProvider.value;
   const prompt = els.modelPrompt.value.trim();
+  const providerSettings = collectModelSettingsFromForm();
   if (!provider) {
-    els.modelResult.textContent = '当前服务器尚未配置可用模型。请教师先设置 API Key。';
+    els.modelResult.textContent = '请先选择模型服务商。';
+    return;
+  }
+  if (!providerSettings.apiKey) {
+    els.modelResult.textContent = '请先填写个人 API Key。Key 默认只保存在当前浏览器。';
     return;
   }
   if (!prompt) {
@@ -444,6 +491,9 @@ async function generateModelAdvice() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         provider,
+        apiKey: providerSettings.apiKey,
+        model: providerSettings.model,
+        baseUrl: providerSettings.baseUrl,
         prompt,
         context: buildCurrentModelContext(),
       }),
@@ -455,10 +505,34 @@ async function generateModelAdvice() {
     }
     els.modelResult.textContent = result.ok ? result.content : result.error || '模型未返回有效结果。';
   } catch {
-    els.modelResult.textContent = '模型服务暂时不可用，请检查服务器网络或 API Key 配置。';
+    els.modelResult.textContent = '模型服务暂时不可用，请检查个人 API Key、模型名或网络状态。';
   } finally {
     els.generateWithModel.disabled = false;
   }
+}
+
+function collectModelSettingsFromForm() {
+  return {
+    apiKey: els.modelApiKey.value.trim(),
+    model: els.modelName.value.trim(),
+    baseUrl: els.modelBaseUrl.value.trim(),
+  };
+}
+
+function getCurrentProviderSettings() {
+  return modelSettings.providers?.[els.modelProvider.value] || {};
+}
+
+function defaultModelName(provider) {
+  const defaults = {
+    openai: 'gpt-4.1-mini',
+    deepseek: 'deepseek-chat',
+    kimi: 'moonshot-v1-8k',
+    zhipu: 'glm-4-flash',
+    doubao: 'doubao-seed-1-6',
+    custom: 'custom-model',
+  };
+  return defaults[provider] || '';
 }
 
 function buildCurrentModelContext() {
@@ -812,11 +886,23 @@ function apiFetch(url, options = {}) {
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (saved?.groups?.length) return saved;
+    const result = validateClassroomState(saved);
+    if (result.ok) return result.value;
   } catch {
-    localStorage.removeItem(STORAGE_KEY);
+    // Fall through to reset corrupt local state.
   }
+  localStorage.removeItem(STORAGE_KEY);
   return createSampleState();
+}
+
+function loadModelSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MODEL_SETTINGS_KEY));
+    if (saved && typeof saved === 'object') return saved;
+  } catch {
+    localStorage.removeItem(MODEL_SETTINGS_KEY);
+  }
+  return { provider: 'deepseek', providers: {} };
 }
 
 function createSampleState() {
@@ -878,4 +964,18 @@ function escapeHtml(value) {
 function formatDate(value) {
   if (!value) return '未记录';
   return new Date(value).toLocaleString('zh-CN', { hour12: false });
+}
+
+function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
+async function safeJson(response) {
+  try {
+    return await response.json();
+  } catch {
+    return { ok: false, error: '服务器返回内容无法解析，请刷新页面后重试。' };
+  }
 }
