@@ -1,981 +1,937 @@
-import {
-  STAGES,
-  buildAssistantAdvice,
-  calculateCompetencyProfile,
-  calculateStageProgress,
-  classifyKano,
-  createGroups,
-  extractKeywords,
-  getRiskStatus,
-  getStageToolkit,
-  parseStudentText,
-  rankByTopsis,
-  validateClassroomState,
-} from './app-core.mjs';
+:root {
+  color-scheme: light;
+  --bg: #eef4f5;
+  --surface: #ffffff;
+  --surface-soft: #f7fbfb;
+  --text: #12252b;
+  --muted: #667a82;
+  --line: #d8e4e7;
+  --primary: #0f5666;
+  --primary-2: #16758a;
+  --primary-soft: #dff0f3;
+  --aqua: #0f7f8f;
+  --aqua-soft: #e2f5f7;
+  --accent: #f0b84f;
+  --accent-soft: #fff2d4;
+  --success: #2f8f6b;
+  --success-soft: #e4f5ee;
+  --warning: #bc7a2a;
+  --warning-soft: #fff2df;
+  --danger: #b64f63;
+  --danger-soft: #fdecef;
+  --shadow: 0 18px 44px rgba(18, 37, 43, 0.08);
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+}
 
-const STORAGE_KEY = 'service-design-studio-v01';
-const ACCESS_CODE_KEY = 'service-design-access-code';
-const SESSION_TOKEN_KEY = 'service-design-session-token';
-const MODEL_SETTINGS_KEY = 'service-design-model-settings';
-const REQUEST_TIMEOUT_MS = 15000;
+* {
+  box-sizing: border-box;
+}
 
-const sampleStudentsText = `20260101 陈一 产品设计1班
-20260102 林二 产品设计1班
-20260103 周三 产品设计1班
-20260104 吴四 产品设计1班
-20260105 郑五 产品设计1班
-20260106 王六 产品设计1班
-20260107 赵七 产品设计1班
-20260108 孙八 产品设计1班
-20260109 李九 产品设计1班
-20260110 钱十 产品设计1班`;
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(22, 117, 138, 0.14), transparent 34rem),
+    linear-gradient(180deg, #f8fbfb 0%, var(--bg) 36rem);
+  color: var(--text);
+}
 
-let state = loadState();
-let backendAvailable = false;
-let backendSaveTimer = null;
-let appConfig = { authRequired: false, providers: [] };
-let accessCode = sessionStorage.getItem(ACCESS_CODE_KEY) || '';
-let sessionToken = sessionStorage.getItem(SESSION_TOKEN_KEY) || '';
-let modelSettings = loadModelSettings();
-let activeAuthMode = 'login';
-let activeRole = 'teacher';
-let activeGroupId = state.groups[0]?.id || 'g1';
-let activeStageId = 'empathy';
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
 
-const els = {
-  body: document.body,
-  roleButtons: [...document.querySelectorAll('[data-role]')],
-  studentList: document.querySelector('#studentList'),
-  groupSize: document.querySelector('#groupSize'),
-  buildGroups: document.querySelector('#buildGroups'),
-  stageNav: document.querySelector('#stageNav'),
-  groupList: document.querySelector('#groupList'),
-  activeStageLabel: document.querySelector('#activeStageLabel'),
-  activeProjectTitle: document.querySelector('#activeProjectTitle'),
-  overallProgress: document.querySelector('#overallProgress'),
-  dashboardEvidence: document.querySelector('#dashboardEvidence'),
-  dashboardNeeds: document.querySelector('#dashboardNeeds'),
-  dashboardRisk: document.querySelector('#dashboardRisk'),
-  projectTitle: document.querySelector('#projectTitle'),
-  projectScenario: document.querySelector('#projectScenario'),
-  stageTitle: document.querySelector('#stageTitle'),
-  stageFocus: document.querySelector('#stageFocus'),
-  methodToolkit: document.querySelector('#methodToolkit'),
-  stageOutcome: document.querySelector('#stageOutcome'),
-  evidenceList: document.querySelector('#evidenceList'),
-  addEvidence: document.querySelector('#addEvidence'),
-  needList: document.querySelector('#needList'),
-  addNeed: document.querySelector('#addNeed'),
-  conceptList: document.querySelector('#conceptList'),
-  addConcept: document.querySelector('#addConcept'),
-  progressBars: document.querySelector('#progressBars'),
-  wordCloud: document.querySelector('#wordCloud'),
-  rankChart: document.querySelector('#rankChart'),
-  competencyRadar: document.querySelector('#competencyRadar'),
-  assistantAdvice: document.querySelector('#assistantAdvice'),
-  importData: document.querySelector('#importData'),
-  importFile: document.querySelector('#importFile'),
-  exportData: document.querySelector('#exportData'),
-  resetDemo: document.querySelector('#resetDemo'),
-  authGate: document.querySelector('#authGate'),
-  authTabs: document.querySelector('#authTabs'),
-  loginForm: document.querySelector('#loginForm'),
-  registerForm: document.querySelector('#registerForm'),
-  codeForm: document.querySelector('#codeForm'),
-  loginStudentId: document.querySelector('#loginStudentId'),
-  loginPassword: document.querySelector('#loginPassword'),
-  loginAccount: document.querySelector('#loginAccount'),
-  registerName: document.querySelector('#registerName'),
-  registerClass: document.querySelector('#registerClass'),
-  registerStudentId: document.querySelector('#registerStudentId'),
-  registerPassword: document.querySelector('#registerPassword'),
-  registerAccount: document.querySelector('#registerAccount'),
-  accessCodeInput: document.querySelector('#accessCodeInput'),
-  unlockApp: document.querySelector('#unlockApp'),
-  authMessage: document.querySelector('#authMessage'),
-  modelProvider: document.querySelector('#modelProvider'),
-  modelStatus: document.querySelector('#modelStatus'),
-  modelApiKey: document.querySelector('#modelApiKey'),
-  modelName: document.querySelector('#modelName'),
-  modelBaseUrl: document.querySelector('#modelBaseUrl'),
-  saveModelSettings: document.querySelector('#saveModelSettings'),
-  modelPrompt: document.querySelector('#modelPrompt'),
-  generateWithModel: document.querySelector('#generateWithModel'),
-  modelResult: document.querySelector('#modelResult'),
-};
+button {
+  border: 0;
+  border-radius: 8px;
+  background: var(--primary);
+  color: white;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 700;
+}
 
-init();
+button:hover {
+  background: #0b4350;
+}
 
-async function init() {
-  els.studentList.value = state.studentText;
-  bindEvents();
-  render();
-  await loadPublicConfig();
-  renderModelProviders();
-  if (appConfig.authRequired && !sessionToken && !accessCode) {
-    showAuthGate();
-    return;
+button.ghost {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+textarea,
+input,
+select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: white;
+  color: var(--text);
+  outline: none;
+}
+
+textarea:focus,
+input:focus,
+select:focus {
+  border-color: var(--primary-2);
+  box-shadow: 0 0 0 3px rgba(22, 117, 138, 0.12);
+}
+
+label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0;
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+h2 {
+  margin-bottom: 0;
+  font-size: 18px;
+}
+
+h3 {
+  margin-bottom: 10px;
+  font-size: 15px;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background:
+    linear-gradient(135deg, rgba(15, 86, 102, 0.86), rgba(47, 143, 107, 0.78)),
+    var(--bg);
+}
+
+.auth-gate[hidden] {
+  display: none;
+}
+
+.auth-card {
+  display: grid;
+  gap: 13px;
+  width: min(100%, 460px);
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 26px;
+  box-shadow: 0 30px 80px rgba(18, 37, 43, 0.24);
+}
+
+.auth-card .brand-mark {
+  position: static;
+}
+
+.auth-card h2 {
+  margin-bottom: 0;
+  font-size: 25px;
+}
+
+.field-hint {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  border-radius: 10px;
+  background: #e7f1f3;
+  padding: 4px;
+}
+
+.auth-tabs .segmented {
+  padding: 9px 8px;
+}
+
+.role-choice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #e7f1f3;
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-form[hidden] {
+  display: none;
+}
+
+.form-message {
+  min-height: 20px;
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.command-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  padding: 16px 22px;
+  border-bottom: 1px solid rgba(216, 228, 231, 0.9);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px);
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.brand-mark {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--primary);
+  color: white;
+  font-weight: 900;
+}
+
+.brand-mark::after {
+  content: "";
+  position: absolute;
+}
+
+.eyebrow {
+  margin-bottom: 4px;
+  color: var(--primary-2);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+}
+
+.role-switch {
+  display: flex;
+  padding: 4px;
+  border-radius: 10px;
+  background: #e7f1f3;
+}
+
+.segmented {
+  background: transparent;
+  color: var(--primary);
+}
+
+.segmented.active {
+  background: white;
+  color: var(--primary);
+  box-shadow: 0 4px 14px rgba(15, 86, 102, 0.14);
+}
+
+.segmented.locked,
+.segmented:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 10px 6px 6px;
+  border: 1px solid #d7e7eb;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text);
+}
+
+.user-profile[hidden] {
+  display: none;
+}
+
+.user-avatar {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), #2fbf71);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.user-profile strong,
+.user-profile small {
+  display: block;
+  line-height: 1.25;
+}
+
+.user-profile small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(4, 124px);
+  gap: 12px;
+  padding: 16px 22px 6px;
+}
+
+.hero-card,
+.stat-card,
+.panel {
+  border: 1px solid rgba(216, 228, 231, 0.9);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+}
+
+.hero-card {
+  min-height: 116px;
+  padding: 18px;
+  background:
+    linear-gradient(135deg, rgba(15, 86, 102, 0.92), rgba(22, 117, 138, 0.76)),
+    linear-gradient(135deg, #dff0f3, white);
+  color: white;
+}
+
+.hero-card .eyebrow,
+.hero-card .hero-copy {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.hero-card h2 {
+  margin-bottom: 10px;
+  font-size: 25px;
+}
+
+.hero-copy {
+  max-width: 780px;
+  margin-bottom: 0;
+}
+
+.stat-card {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  min-height: 116px;
+  padding: 16px;
+}
+
+.stat-card span {
+  color: var(--primary);
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.stat-card small {
+  margin-top: 10px;
+  color: var(--muted);
+}
+
+.primary-stat {
+  background: #fffaf0;
+}
+
+.primary-stat span {
+  color: var(--warning);
+}
+
+.risk-stat span {
+  font-size: 23px;
+  color: var(--danger);
+}
+
+.stat-card[data-tone="success"] {
+  background: var(--success-soft);
+}
+
+.stat-card[data-tone="success"] span {
+  color: var(--success);
+}
+
+.stat-card[data-tone="warning"] {
+  background: var(--warning-soft);
+}
+
+.stat-card[data-tone="warning"] span {
+  color: var(--warning);
+}
+
+.stat-card[data-tone="danger"] {
+  background: var(--danger-soft);
+}
+
+.stat-card[data-tone="danger"] span {
+  color: var(--danger);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 340px;
+  gap: 14px;
+  padding: 12px 22px 24px;
+}
+
+.left-rail,
+.assistant,
+.workbench {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-width: 0;
+}
+
+.panel {
+  padding: 15px;
+}
+
+.panel-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.status-chip,
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.status-chip[data-tone="aqua"] {
+  background: var(--aqua-soft);
+  color: var(--aqua);
+}
+
+.status-chip[data-tone="amber"] {
+  background: var(--accent-soft);
+  color: var(--warning);
+}
+
+.status-chip[data-tone="green"] {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.inline-controls {
+  display: grid;
+  grid-template-columns: 1fr 72px;
+  gap: 8px;
+  align-items: end;
+  margin-top: 10px;
+}
+
+.inline-controls button {
+  grid-column: 1 / -1;
+}
+
+.stage-timeline,
+.group-list,
+.compact-list,
+.advice-list {
+  display: grid;
+  gap: 10px;
+}
+
+.stage-button {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--text);
+  text-align: left;
+}
+
+.stage-button.active {
+  border-color: var(--primary-2);
+  background: #edf8fa;
+}
+
+.stage-dot {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 11px;
+  background: white;
+  color: var(--primary);
+  font-weight: 900;
+  box-shadow: inset 0 0 0 1px rgba(15, 86, 102, 0.12);
+}
+
+.stage-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stage-copy small,
+.group-button small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.stage-percent,
+.group-progress {
+  color: var(--primary);
+  font-weight: 900;
+}
+
+.group-button {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--text);
+  text-align: left;
+}
+
+.group-button.active {
+  border-color: var(--primary-2);
+  background: #edf8fa;
+}
+
+.group-button span:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.form-grid,
+.method-grid,
+.toolkit-grid,
+.visual-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.form-grid,
+.method-grid,
+.toolkit-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.toolkit-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tool-card {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 14px;
+}
+
+.tool-card h3 {
+  margin-bottom: 5px;
+}
+
+.tool-card p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tool-symbol {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--primary);
+  color: white;
+  font-weight: 900;
+}
+
+.tool-card[data-tone="aqua"] .tool-symbol {
+  background: var(--aqua);
+}
+
+.tool-card[data-tone="amber"] .tool-symbol {
+  background: var(--warning);
+}
+
+.tool-card[data-tone="green"] .tool-symbol {
+  background: var(--success);
+}
+
+.visual-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.evidence-item,
+.list-item,
+.visual-card,
+.advice-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.evidence-item,
+.list-item {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.card-meta,
+.list-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.card-meta small {
+  color: var(--muted);
+}
+
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric-row.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mini-bar {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 44px;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mini-bar b {
+  color: var(--primary);
+  text-align: right;
+}
+
+.visual-card {
+  min-height: 188px;
+  padding: 14px;
+}
+
+.radar-card {
+  display: grid;
+  align-content: start;
+}
+
+.radar-wrap {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  align-items: center;
+  justify-items: center;
+}
+
+.radar-svg {
+  width: 132px;
+  height: 132px;
+}
+
+.radar-svg circle,
+.radar-svg line {
+  fill: none;
+  stroke: #cfdee2;
+  stroke-width: 1;
+}
+
+.radar-svg polygon {
+  fill: rgba(22, 117, 138, 0.24);
+  stroke: var(--primary);
+  stroke-width: 3;
+}
+
+.radar-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+}
+
+.radar-metric {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.radar-metric b {
+  color: var(--primary);
+}
+
+.bar-row {
+  margin-bottom: 11px;
+}
+
+.bar-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.bar-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dfe9ec;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), var(--primary-2));
+}
+
+.word-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-content: flex-start;
+}
+
+.word-cloud span {
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: white;
+  color: var(--primary);
+  box-shadow: 0 4px 12px rgba(18, 37, 43, 0.06);
+}
+
+.assistant .sticky-panel {
+  position: sticky;
+  top: 86px;
+}
+
+.advice-section {
+  padding: 12px;
+}
+
+.advice-section h3 {
+  color: var(--primary);
+}
+
+.advice-item {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.model-box {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.compact-title {
+  margin-bottom: 10px;
+}
+
+.ai-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.model-config-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 10px;
+}
+
+.model-result {
+  min-height: 92px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 12px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.assistant .advice-list {
+  max-height: 42vh;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.model-grid span {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: white;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 24px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  text-align: center;
+}
+
+.student-mode .teacher-only {
+  display: none;
+}
+
+@media (max-width: 1220px) {
+  .dashboard {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  await loadBackendState();
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+
+  .hero-card {
+    grid-column: 1 / -1;
+  }
+
+  .layout {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  .visual-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .assistant {
+    grid-column: 1 / -1;
+  }
+
+  .assistant .sticky-panel {
+    position: static;
   }
 }
 
-function bindEvents() {
-  els.roleButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-      activeRole = button.dataset.role;
-      render();
-    });
-  });
-
-  els.buildGroups.addEventListener('click', () => {
-    const students = parseStudentText(els.studentList.value);
-    state.studentText = els.studentList.value;
-    state.groups = createGroups(students, Number(els.groupSize.value));
-    seedProjects(state.groups);
-    activeGroupId = state.groups[0]?.id || activeGroupId;
-    saveState();
-    render();
-  });
-
-  els.stageNav.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-stage-id]');
-    if (!button) return;
-    activeStageId = button.dataset.stageId;
-    render();
-  });
-
-  els.groupList.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-group-id]');
-    if (!button) return;
-    activeGroupId = button.dataset.groupId;
-    render();
-  });
-
-  els.projectTitle.addEventListener('input', () => {
-    activeGroup().project.title = els.projectTitle.value;
-    saveState();
-    renderLight();
-  });
-
-  els.projectScenario.addEventListener('input', () => {
-    activeGroup().project.scenario = els.projectScenario.value;
-    saveState();
-    renderLight();
-  });
-
-  els.addEvidence.addEventListener('click', () => {
-    const stage = activeProject().stages[activeStageId];
-    stage.evidence.push({
-      title: '新证据',
-      content: '请记录证据来源、关键发现和与项目的关系。',
-      updatedAt: new Date().toISOString(),
-    });
-    saveState();
-    render();
-  });
-
-  els.addNeed.addEventListener('click', () => {
-    activeProject().needs.push({
-      title: '新增需求',
-      importance: 4,
-      satisfaction: 2,
-    });
-    saveState();
-    render();
-  });
-
-  els.addConcept.addEventListener('click', () => {
-    activeProject().concepts.push({
-      title: '新增方案',
-      novelty: 3,
-      feasibility: 3,
-      serviceQuality: 3,
-      risk: 2,
-    });
-    saveState();
-    render();
-  });
-
-  els.evidenceList.addEventListener('input', updateEvidence);
-  els.needList.addEventListener('input', updateNeeds);
-  els.conceptList.addEventListener('input', updateConcepts);
-
-  els.importData.addEventListener('click', () => {
-    els.importFile.click();
-  });
-
-  els.importFile.addEventListener('change', async () => {
-    const file = els.importFile.files?.[0];
-    if (!file) return;
-    try {
-      const imported = JSON.parse(await file.text());
-      const result = validateClassroomState(imported);
-      if (!result.ok) {
-        window.alert(result.error);
-        return;
-      }
-      Object.assign(state, result.value);
-      activeGroupId = state.groups[0].id;
-      activeStageId = 'empathy';
-      els.studentList.value = state.studentText;
-      saveState();
-      render();
-    } catch {
-      window.alert('导入失败：请确认文件为有效 JSON。');
-    } finally {
-      els.importFile.value = '';
-    }
-  });
-
-  els.exportData.addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'service-design-classroom-data-v01.json';
-    link.click();
-    URL.revokeObjectURL(link.href);
-  });
-
-  els.resetDemo.addEventListener('click', () => {
-    Object.assign(state, createSampleState());
-    activeGroupId = state.groups[0].id;
-    activeStageId = 'empathy';
-    saveState();
-    render();
-  });
-
-  els.authTabs.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-auth-mode]');
-    if (!button) return;
-    activeAuthMode = button.dataset.authMode;
-    renderAuthMode();
-  });
-  els.loginAccount.addEventListener('click', loginAccount);
-  els.registerAccount.addEventListener('click', registerAccount);
-  els.unlockApp.addEventListener('click', unlockWithAccessCode);
-  els.saveModelSettings.addEventListener('click', saveModelSettings);
-  els.modelProvider.addEventListener('change', () => {
-    modelSettings.provider = els.modelProvider.value;
-    applyModelSettingsToForm();
-  });
-  els.loginPassword.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') loginAccount();
-  });
-  els.registerPassword.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') registerAccount();
-  });
-  els.accessCodeInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') unlockWithAccessCode();
-  });
-  els.generateWithModel.addEventListener('click', generateModelAdvice);
-}
-
-function updateEvidence(event) {
-  const field = event.target.closest('[data-evidence-index]');
-  if (!field) return;
-  const index = Number(field.dataset.evidenceIndex);
-  const key = field.dataset.key;
-  const item = activeProject().stages[activeStageId].evidence[index];
-  item[key] = field.value;
-  item.updatedAt = new Date().toISOString();
-  saveState();
-  renderLight();
-}
-
-function updateNeeds(event) {
-  const field = event.target.closest('[data-need-index]');
-  if (!field) return;
-  const item = activeProject().needs[Number(field.dataset.needIndex)];
-  item[field.dataset.key] = field.type === 'number' ? Number(field.value) : field.value;
-  saveState();
-  renderLight();
-}
-
-function updateConcepts(event) {
-  const field = event.target.closest('[data-concept-index]');
-  if (!field) return;
-  const item = activeProject().concepts[Number(field.dataset.conceptIndex)];
-  item[field.dataset.key] = field.type === 'number' ? Number(field.value) : field.value;
-  saveState();
-  renderLight();
-}
-
-async function loadPublicConfig() {
-  if (location.protocol === 'file:') return;
-  try {
-    const response = await fetch('./api/config', { cache: 'no-store' });
-    if (response.ok) {
-      appConfig = await response.json();
-    }
-  } catch {
-    appConfig = { authRequired: false, providers: [] };
-  }
-}
-
-function showAuthGate(message = '') {
-  els.authGate.hidden = false;
-  renderAuthMode();
-  els.accessCodeInput.value = accessCode;
-  els.authMessage.textContent = message;
-  const focusTarget = activeAuthMode === 'register' ? els.registerName : activeAuthMode === 'code' ? els.accessCodeInput : els.loginStudentId;
-  setTimeout(() => focusTarget.focus(), 0);
-}
-
-function hideAuthGate() {
-  els.authGate.hidden = true;
-  els.authMessage.textContent = '';
-}
-
-function renderAuthMode() {
-  els.authTabs.querySelectorAll('[data-auth-mode]').forEach((button) => {
-    button.classList.toggle('active', button.dataset.authMode === activeAuthMode);
-  });
-  els.loginForm.hidden = activeAuthMode !== 'login';
-  els.registerForm.hidden = activeAuthMode !== 'register';
-  els.codeForm.hidden = activeAuthMode !== 'code';
-}
-
-async function loginAccount() {
-  await authenticateAccount('./api/auth/login', {
-    studentId: els.loginStudentId.value,
-    password: els.loginPassword.value,
-  });
-}
-
-async function registerAccount() {
-  await authenticateAccount('./api/auth/register', {
-    name: els.registerName.value,
-    className: els.registerClass.value,
-    studentId: els.registerStudentId.value,
-    password: els.registerPassword.value,
-  });
-}
-
-async function authenticateAccount(url, payload) {
-  setAuthBusy(true);
-  els.authMessage.textContent = '正在连接课堂服务器，请稍候...';
-  try {
-    const response = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const result = await safeJson(response);
-    if (!response.ok || !result.ok) {
-      els.authMessage.textContent = result.error || '账号验证失败，请检查填写内容。';
-      return;
-    }
-    sessionToken = result.token;
-    accessCode = '';
-    sessionStorage.setItem(SESSION_TOKEN_KEY, sessionToken);
-    sessionStorage.removeItem(ACCESS_CODE_KEY);
-    hideAuthGate();
-    await loadBackendState();
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
-    }
-  } catch (error) {
-    els.authMessage.textContent = error.name === 'AbortError'
-      ? '课堂服务器响应超时，请刷新页面后重试。'
-      : '无法连接课堂服务器，请稍后重试。';
-  } finally {
-    setAuthBusy(false);
-  }
-}
-
-function setAuthBusy(isBusy) {
-  els.loginAccount.disabled = isBusy;
-  els.registerAccount.disabled = isBusy;
-  els.unlockApp.disabled = isBusy;
-}
-
-async function unlockWithAccessCode() {
-  const nextCode = els.accessCodeInput.value.trim();
-  if (!nextCode) {
-    showAuthGate('请输入课堂访问口令。');
-    return;
-  }
-  accessCode = nextCode;
-  sessionToken = '';
-  els.authMessage.textContent = '正在验证课堂口令...';
-  try {
-    const response = await apiFetch('./api/auth/check', { method: 'POST' });
-    if (!response.ok) {
-      sessionStorage.removeItem(ACCESS_CODE_KEY);
-      showAuthGate('口令不正确，请向教师确认。');
-      return;
-    }
-    sessionStorage.setItem(ACCESS_CODE_KEY, accessCode);
-    sessionStorage.removeItem(SESSION_TOKEN_KEY);
-    hideAuthGate();
-    await loadBackendState();
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
-    }
-  } catch (error) {
-    showAuthGate(error.name === 'AbortError' ? '课堂服务器响应超时，请刷新页面后重试。' : '无法连接课堂服务器，请稍后重试。');
-  }
-}
-
-function renderModelProviders() {
-  const providers = appConfig.providers || [];
-  if (!providers.length) {
-    els.modelProvider.innerHTML = '<option value="">离线规则助手</option>';
-    els.modelStatus.textContent = '离线';
-    return;
+@media (max-width: 860px) {
+  .command-bar,
+  .brand-block,
+  .panel-title {
+    align-items: stretch;
   }
 
-  els.modelProvider.innerHTML = providers.map((provider) => `
-    <option value="${escapeHtml(provider.id)}">
-      ${escapeHtml(provider.name)}
-    </option>
-  `).join('');
-
-  els.modelStatus.textContent = '个人接入';
-  els.modelProvider.value = modelSettings.provider || providers[0]?.id || '';
-  applyModelSettingsToForm();
-}
-
-function applyModelSettingsToForm() {
-  const providerSettings = getCurrentProviderSettings();
-  els.modelApiKey.value = providerSettings.apiKey || '';
-  els.modelName.value = providerSettings.model || defaultModelName(els.modelProvider.value);
-  els.modelBaseUrl.value = providerSettings.baseUrl || '';
-}
-
-function saveModelSettings() {
-  const provider = els.modelProvider.value;
-  if (!provider) {
-    els.modelResult.textContent = '请先选择模型服务商。';
-    return;
-  }
-  modelSettings.provider = provider;
-  modelSettings.providers = modelSettings.providers || {};
-  modelSettings.providers[provider] = {
-    apiKey: els.modelApiKey.value.trim(),
-    model: els.modelName.value.trim(),
-    baseUrl: els.modelBaseUrl.value.trim(),
-  };
-  localStorage.setItem(MODEL_SETTINGS_KEY, JSON.stringify(modelSettings));
-  els.modelStatus.textContent = modelSettings.providers[provider].apiKey ? '已保存' : '缺少 Key';
-  els.modelResult.textContent = modelSettings.providers[provider].apiKey
-    ? '个人模型设置已保存到当前浏览器。'
-    : '模型设置已保存，但生成建议前仍需填写 API Key。';
-}
-
-async function generateModelAdvice() {
-  const provider = els.modelProvider.value;
-  const prompt = els.modelPrompt.value.trim();
-  const providerSettings = collectModelSettingsFromForm();
-  if (!provider) {
-    els.modelResult.textContent = '请先选择模型服务商。';
-    return;
-  }
-  if (!providerSettings.apiKey) {
-    els.modelResult.textContent = '请先填写个人 API Key。Key 默认只保存在当前浏览器。';
-    return;
-  }
-  if (!prompt) {
-    els.modelResult.textContent = '请先输入要交给模型处理的服务设计任务。';
-    return;
+  .command-bar {
+    flex-direction: column;
   }
 
-  els.generateWithModel.disabled = true;
-  els.modelResult.textContent = '正在生成，请稍候...';
-  try {
-    const response = await apiFetch('./api/llm/chat', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        provider,
-        apiKey: providerSettings.apiKey,
-        model: providerSettings.model,
-        baseUrl: providerSettings.baseUrl,
-        prompt,
-        context: buildCurrentModelContext(),
-      }),
-    });
-    const result = await response.json();
-    if (response.status === 401) {
-      showAuthGate('访问口令已失效，请重新输入。');
-      return;
-    }
-    els.modelResult.textContent = result.ok ? result.content : result.error || '模型未返回有效结果。';
-  } catch {
-    els.modelResult.textContent = '模型服务暂时不可用，请检查个人 API Key、模型名或网络状态。';
-  } finally {
-    els.generateWithModel.disabled = false;
+  .dashboard,
+  .layout,
+  .form-grid,
+  .method-grid,
+  .toolkit-grid,
+  .model-config-grid,
+  .visual-grid,
+  .evidence-grid {
+    grid-template-columns: 1fr;
   }
-}
 
-function collectModelSettingsFromForm() {
-  return {
-    apiKey: els.modelApiKey.value.trim(),
-    model: els.modelName.value.trim(),
-    baseUrl: els.modelBaseUrl.value.trim(),
-  };
-}
-
-function getCurrentProviderSettings() {
-  return modelSettings.providers?.[els.modelProvider.value] || {};
-}
-
-function defaultModelName(provider) {
-  const defaults = {
-    openai: 'gpt-4.1-mini',
-    deepseek: 'deepseek-chat',
-    kimi: 'moonshot-v1-8k',
-    zhipu: 'glm-4-flash',
-    doubao: 'doubao-seed-1-6',
-    custom: 'custom-model',
-  };
-  return defaults[provider] || '';
-}
-
-function buildCurrentModelContext() {
-  const project = activeProject();
-  const stage = activeStage();
-  const evidence = project.stages[activeStageId]?.evidence || [];
-  return {
-    projectTitle: project.title,
-    scenario: project.scenario,
-    stage: stage.title,
-    stageFocus: stage.focus,
-    evidence: evidence.map((item) => `${item.title}: ${item.content}`).join('\n'),
-    needs: project.needs.map((item) => `${item.title} 重要度${item.importance} 满意度${item.satisfaction}`).join('\n'),
-    concepts: project.concepts.map((item) => `${item.title} 创新${item.novelty} 可行${item.feasibility} 质量${item.serviceQuality} 风险${item.risk}`).join('\n'),
-  };
-}
-
-function render() {
-  els.body.classList.toggle('student-mode', activeRole === 'student');
-  els.roleButtons.forEach((button) => button.classList.toggle('active', button.dataset.role === activeRole));
-  renderStages();
-  renderGroups();
-  renderProject();
-  renderToolkit();
-  renderStage();
-  renderEvidence();
-  renderNeeds();
-  renderConcepts();
-  renderLight();
-}
-
-function renderLight() {
-  renderHeader();
-  renderVisuals();
-  renderAssistant();
-}
-
-function renderStages() {
-  const progress = calculateStageProgress(activeProject());
-  els.stageNav.innerHTML = STAGES.map((stage) => {
-    const active = stage.id === activeStageId ? ' active' : '';
-    return `<button class="stage-button${active}" data-stage-id="${stage.id}">
-      <span class="stage-dot">${stage.shortTitle}</span>
-      <span class="stage-copy">
-        <strong>${stage.title}</strong>
-        <small>${stage.focus}</small>
-      </span>
-      <span class="stage-percent">${progress[stage.id]}%</span>
-    </button>`;
-  }).join('');
-}
-
-function renderGroups() {
-  els.groupList.innerHTML = state.groups.map((group) => {
-    const active = group.id === activeGroupId ? ' active' : '';
-    const progress = calculateStageProgress(group.project);
-    return `<button class="group-button${active}" data-group-id="${group.id}">
-      <span>
-        <strong>${group.name}</strong>
-        <small>${group.members.map((member) => member.name).join('、')}</small>
-      </span>
-      <span class="group-progress">${progress.overall}%</span>
-    </button>`;
-  }).join('');
-}
-
-function renderHeader() {
-  const group = activeGroup();
-  const stage = activeStage();
-  const progress = calculateStageProgress(group.project);
-  const risk = getRiskStatus(progress.overall);
-  els.activeStageLabel.textContent = stage.title;
-  els.activeProjectTitle.textContent = `${group.name}：${group.project.title}`;
-  els.overallProgress.textContent = `${progress.overall}%`;
-  const evidenceCount = STAGES.reduce(
-    (sum, item) => sum + (group.project.stages[item.id]?.evidence?.length || 0),
-    0,
-  );
-  els.dashboardEvidence.textContent = evidenceCount;
-  els.dashboardNeeds.textContent = group.project.needs.length;
-  els.dashboardRisk.textContent = risk.label;
-  els.dashboardRisk.closest('.stat-card').dataset.tone = risk.tone;
-}
-
-function renderProject() {
-  const project = activeProject();
-  els.projectTitle.value = project.title;
-  els.projectScenario.value = project.scenario;
-}
-
-function renderStage() {
-  const stage = activeStage();
-  els.stageTitle.textContent = `${stage.title}任务`;
-  els.stageFocus.textContent = stage.focus;
-}
-
-function renderToolkit() {
-  const toolkit = getStageToolkit(activeStageId);
-  els.stageOutcome.textContent = toolkit.outcome;
-  els.stageOutcome.dataset.tone = toolkit.tone;
-  els.methodToolkit.innerHTML = toolkit.tools.map((tool, index) => `
-    <article class="tool-card" data-tone="${toolkit.tone}">
-      <span class="tool-symbol">${toolkit.symbol}${index + 1}</span>
-      <div>
-        <h3>${escapeHtml(tool.name)}</h3>
-        <p>${escapeHtml(tool.cue)}</p>
-      </div>
-    </article>
-  `).join('');
-}
-
-function renderEvidence() {
-  const evidence = activeProject().stages[activeStageId].evidence;
-  if (!evidence.length) {
-    els.evidenceList.innerHTML = '<div class="empty-state">尚未提交证据。建议先添加访谈、观察、旅程图、服务蓝图或测试反馈。</div>';
-    return;
+  .radar-wrap {
+    grid-template-columns: 1fr;
+    justify-items: center;
   }
-  els.evidenceList.innerHTML = evidence.map((item, index) => `
-    <article class="evidence-item">
-      <div class="card-meta">
-        <span class="status-chip">${getEvidenceType(item.title)}</span>
-        <small>${formatDate(item.updatedAt)}</small>
-      </div>
-      <label>证据标题
-        <input data-evidence-index="${index}" data-key="title" value="${escapeHtml(item.title)}" />
-      </label>
-      <label>证据内容
-        <textarea rows="4" data-evidence-index="${index}" data-key="content">${escapeHtml(item.content)}</textarea>
-      </label>
-    </article>
-  `).join('');
-}
 
-function renderNeeds() {
-  const needs = activeProject().needs;
-  els.needList.innerHTML = needs.map((need, index) => {
-    const kano = classifyKano(need.importance, need.satisfaction);
-    const priority = Math.round((Number(need.importance) * (6 - Number(need.satisfaction))) / 25 * 100);
-    return `<article class="list-item">
-      <div class="list-item-header">
-        <input data-need-index="${index}" data-key="title" value="${escapeHtml(need.title)}" />
-        <span class="pill">${kano}</span>
-      </div>
-      ${renderMiniBar('优先级', priority)}
-      <div class="metric-row two">
-        <label>重要度<input type="number" min="1" max="5" data-need-index="${index}" data-key="importance" value="${need.importance}" /></label>
-        <label>满意度<input type="number" min="1" max="5" data-need-index="${index}" data-key="satisfaction" value="${need.satisfaction}" /></label>
-      </div>
-    </article>`;
-  }).join('');
-}
-
-function renderConcepts() {
-  const ranked = rankedConcepts();
-  els.conceptList.innerHTML = activeProject().concepts.map((concept, index) => {
-    const rank = ranked.findIndex((item) => item.title === concept.title) + 1;
-    const score = ranked.find((item) => item.title === concept.title)?.score || 0;
-    return `<article class="list-item">
-      <div class="list-item-header">
-        <input data-concept-index="${index}" data-key="title" value="${escapeHtml(concept.title)}" />
-        <span class="pill">排序 ${rank || '-'}</span>
-      </div>
-      ${renderMiniBar('综合得分', Math.round(score * 100))}
-      <div class="metric-row">
-        <label>创新<input type="number" min="1" max="5" data-concept-index="${index}" data-key="novelty" value="${concept.novelty}" /></label>
-        <label>可行<input type="number" min="1" max="5" data-concept-index="${index}" data-key="feasibility" value="${concept.feasibility}" /></label>
-        <label>质量<input type="number" min="1" max="5" data-concept-index="${index}" data-key="serviceQuality" value="${concept.serviceQuality}" /></label>
-        <label>风险<input type="number" min="1" max="5" data-concept-index="${index}" data-key="risk" value="${concept.risk}" /></label>
-      </div>
-    </article>`;
-  }).join('');
-}
-
-function renderVisuals() {
-  const project = activeProject();
-  const progress = calculateStageProgress(project);
-  els.progressBars.innerHTML = STAGES.map((stage) => renderBar(stage.title, progress[stage.id])).join('');
-
-  const text = STAGES.flatMap((stage) => project.stages[stage.id].evidence.map((item) => item.content)).join(' ');
-  const keywords = extractKeywords(`${project.title} ${project.scenario} ${text}`);
-  els.wordCloud.innerHTML = keywords.length
-    ? keywords.map((item) => `<span style="font-size:${12 + item.count * 3}px">${escapeHtml(item.word)}</span>`).join('')
-    : '<span>暂无关键词</span>';
-
-  const ranked = rankedConcepts();
-  els.rankChart.innerHTML = ranked.length
-    ? ranked.map((item) => renderBar(item.title, Math.round(item.score * 100))).join('')
-    : '<p class="muted">添加方案后显示排序。</p>';
-
-  els.competencyRadar.innerHTML = renderRadar(calculateCompetencyProfile(project));
-}
-
-function renderAssistant() {
-  const advice = buildAssistantAdvice(activeProject(), activeStageId);
-  const groups = [
-    { title: '当前任务建议', items: advice.slice(0, 2) },
-    { title: '质量检查', items: advice.slice(2, 4) },
-    { title: '下一步行动', items: advice.slice(4) },
-  ];
-  els.assistantAdvice.innerHTML = groups.map((group) => `
-    <section class="advice-section">
-      <h3>${group.title}</h3>
-      ${group.items.map((item) => `<div class="advice-item">${escapeHtml(item)}</div>`).join('')}
-    </section>
-  `).join('');
-}
-
-function renderBar(label, value) {
-  return `<div class="bar-row">
-    <div class="bar-label"><span>${escapeHtml(label)}</span><span>${value}%</span></div>
-    <div class="bar-track"><div class="bar-fill" style="width:${Math.max(0, Math.min(100, value))}%"></div></div>
-  </div>`;
-}
-
-function renderMiniBar(label, value) {
-  return `<div class="mini-bar">
-    <span>${label}</span>
-    <div class="bar-track"><div class="bar-fill" style="width:${Math.max(0, Math.min(100, value))}%"></div></div>
-    <b>${value}%</b>
-  </div>`;
-}
-
-function renderRadar(profile) {
-  const labels = Object.keys(profile);
-  const center = 96;
-  const maxRadius = 70;
-  const points = labels.map((label, index) => {
-    const angle = (-90 + (360 / labels.length) * index) * (Math.PI / 180);
-    const radius = (profile[label] / 100) * maxRadius;
-    return {
-      label,
-      value: profile[label],
-      x: center + Math.cos(angle) * radius,
-      y: center + Math.sin(angle) * radius,
-      ax: center + Math.cos(angle) * maxRadius,
-      ay: center + Math.sin(angle) * maxRadius,
-    };
-  });
-  const polygon = points.map((point) => `${point.x},${point.y}`).join(' ');
-  const axes = points.map((point) => `<line x1="${center}" y1="${center}" x2="${point.ax}" y2="${point.ay}" />`).join('');
-  const labelsMarkup = points.map((point) => `
-    <div class="radar-metric">
-      <span>${point.label}</span>
-      <b>${point.value}</b>
-    </div>
-  `).join('');
-  return `
-    <svg class="radar-svg" viewBox="0 0 192 192" role="img" aria-label="能力画像雷达图">
-      <circle cx="${center}" cy="${center}" r="70" />
-      <circle cx="${center}" cy="${center}" r="46" />
-      <circle cx="${center}" cy="${center}" r="23" />
-      ${axes}
-      <polygon points="${polygon}" />
-    </svg>
-    <div class="radar-metrics">${labelsMarkup}</div>
-  `;
-}
-
-function getEvidenceType(title) {
-  const text = String(title || '');
-  if (text.includes('访谈')) return '访谈';
-  if (text.includes('观察') || text.includes('探险')) return '观察';
-  if (text.includes('画像')) return '画像';
-  if (text.includes('蓝图')) return '蓝图';
-  if (text.includes('测试')) return '测试';
-  return '证据';
-}
-
-function rankedConcepts() {
-  return rankByTopsis(activeProject().concepts, [
-    { key: 'novelty', weight: 0.25, direction: 'benefit' },
-    { key: 'feasibility', weight: 0.3, direction: 'benefit' },
-    { key: 'serviceQuality', weight: 0.3, direction: 'benefit' },
-    { key: 'risk', weight: 0.15, direction: 'cost' },
-  ]);
-}
-
-function activeGroup() {
-  return state.groups.find((group) => group.id === activeGroupId) || state.groups[0];
-}
-
-function activeProject() {
-  return activeGroup().project;
-}
-
-function activeStage() {
-  return STAGES.find((stage) => stage.id === activeStageId) || STAGES[0];
-}
-
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  scheduleBackendSave();
-}
-
-async function loadBackendState() {
-  if (location.protocol === 'file:') return;
-  try {
-    const response = await apiFetch('./api/state', { cache: 'no-store' });
-    if (response.status === 401) {
-      showAuthGate('请先输入课堂访问口令。');
-      return;
-    }
-    if (!response.ok) return;
-    const result = validateClassroomState(await response.json());
-    if (!result.ok) return;
-    backendAvailable = true;
-    state = result.value;
-    activeGroupId = state.groups[0]?.id || activeGroupId;
-    activeStageId = 'empathy';
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    els.studentList.value = state.studentText;
-    render();
-  } catch {
-    backendAvailable = false;
-  }
-}
-
-function scheduleBackendSave() {
-  if (!backendAvailable || location.protocol === 'file:') return;
-  clearTimeout(backendSaveTimer);
-  backendSaveTimer = setTimeout(() => {
-    persistBackendState().catch(() => {
-      backendAvailable = false;
-    });
-  }, 450);
-}
-
-async function persistBackendState() {
-  const response = await apiFetch('./api/state', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(state),
-  });
-  if (response.status === 401) {
-    showAuthGate('访问口令已失效，请重新输入。');
-  }
-  if (!response.ok) throw new Error('backend save failed');
-}
-
-function apiFetch(url, options = {}) {
-  const headers = new Headers(options.headers || {});
-  if (sessionToken) {
-    headers.set('authorization', `Bearer ${sessionToken}`);
-  }
-  if (accessCode) {
-    headers.set('x-access-code', accessCode);
-  }
-  return fetch(url, { ...options, headers });
-}
-
-function loadState() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    const result = validateClassroomState(saved);
-    if (result.ok) return result.value;
-  } catch {
-    // Fall through to reset corrupt local state.
-  }
-  localStorage.removeItem(STORAGE_KEY);
-  return createSampleState();
-}
-
-function loadModelSettings() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(MODEL_SETTINGS_KEY));
-    if (saved && typeof saved === 'object') return saved;
-  } catch {
-    localStorage.removeItem(MODEL_SETTINGS_KEY);
-  }
-  return { provider: 'deepseek', providers: {} };
-}
-
-function createSampleState() {
-  const groups = createGroups(parseStudentText(sampleStudentsText), 5);
-  seedProjects(groups);
-  return {
-    studentText: sampleStudentsText,
-    groups,
-  };
-}
-
-function seedProjects(groups) {
-  groups.forEach((group, index) => {
-    if (!group.project) return;
-    group.project.title = index === 0 ? '医院无忧导诊服务优化' : '校园共享学习空间服务优化';
-    group.project.scenario = index === 0
-      ? '围绕老年患者、陪诊家属、导诊员和医生之间的信息传递断点，优化从入院咨询到候诊就医的服务体验。'
-      : '围绕学生预约、自习、设备借用和空间秩序维护，优化校园学习空间的服务触点。';
-    group.project.stages.empathy.evidence = [
-      {
-        title: '深度访谈提纲',
-        content: '访谈老年患者、家属、导诊员，关注等待、指引、信息理解和情绪压力。',
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        title: '服务探险记录',
-        content: '记录入口、挂号、分诊、候诊、缴费等触点，标注拥堵与信息断点。',
-        updatedAt: new Date().toISOString(),
-      },
-    ];
-    group.project.stages.define.evidence = [
-      {
-        title: '核心用户画像',
-        content: '主要用户为低数字熟练度的老年患者，关键陪同者为家属，服务协作者为导诊员。',
-        updatedAt: new Date().toISOString(),
-      },
-    ];
-    group.project.needs = [
-      { title: '入口处快速理解就诊流程', importance: 5, satisfaction: 2 },
-      { title: '候诊状态可视化提醒', importance: 4, satisfaction: 3 },
-      { title: '家属远程同步进度', importance: 3, satisfaction: 2 },
-    ];
-    group.project.concepts = [
-      { title: '导诊触点重构方案', novelty: 4, feasibility: 4, serviceQuality: 5, risk: 2 },
-      { title: '候诊信息可视化屏', novelty: 3, feasibility: 5, serviceQuality: 4, risk: 1 },
-      { title: '陪诊小程序提醒', novelty: 4, feasibility: 3, serviceQuality: 4, risk: 3 },
-    ];
-  });
-}
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
-}
-
-function formatDate(value) {
-  if (!value) return '未记录';
-  return new Date(value).toLocaleString('zh-CN', { hour12: false });
-}
-
-function fetchWithTimeout(url, options = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
-}
-
-async function safeJson(response) {
-  try {
-    return await response.json();
-  } catch {
-    return { ok: false, error: '服务器返回内容无法解析，请刷新页面后重试。' };
+  .metric-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -1,334 +1,1112 @@
-export const STAGES = [
-  {
-    id: 'empathy',
-    title: '探索与共情',
-    shortTitle: '共情',
-    focus: '选题、情境观察、访谈、问卷、服务探险',
-    methods: ['选题雷达', '深度访谈', '观察记录', '利益相关者初筛', '词云洞察'],
-  },
-  {
-    id: 'define',
-    title: '定义与构思',
-    shortTitle: '定义',
-    focus: '用户画像、旅程图、需求筛选、问题定义、方案构思',
-    methods: ['用户画像', '利益相关者地图', 'Kano', 'AHP', 'TRIZ'],
-  },
-  {
-    id: 'prototype',
-    title: '原型与迭代',
-    shortTitle: '迭代',
-    focus: '服务蓝图、触点设计、原型测试、方案评价、成果表达',
-    methods: ['服务蓝图', 'SERVQUAL', 'TOPSIS', '快速原型测试', '反思画布'],
-  },
-];
+import {
+  STAGES,
+  buildAssistantAdvice,
+  calculateCompetencyProfile,
+  calculateStageProgress,
+  classifyKano,
+  createGroups,
+  extractKeywords,
+  getRiskStatus,
+  getStageToolkit,
+  parseStudentText,
+  rankByTopsis,
+  validateClassroomState,
+} from './app-core.mjs';
 
-const STAGE_TOOLKITS = {
-  empathy: {
-    symbol: '探',
-    tone: 'aqua',
-    outcome: '形成调研证据、关键词洞察和初步问题地图。',
-    tools: [
-      { name: '选题雷达', cue: '从真实场景、用户痛点、可调研性三个维度判断题目。' },
-      { name: '深度访谈', cue: '生成访谈提纲，记录原话、情绪和行为证据。' },
-      { name: '服务探险', cue: '进入现场记录触点、等待、断点和信息流。' },
-    ],
-  },
-  define: {
-    symbol: '定',
-    tone: 'amber',
-    outcome: '形成用户画像、利益相关者关系、关键需求和问题定义。',
-    tools: [
-      { name: '用户画像', cue: '把调研证据转化为目标用户、目标、痛点和行为特征。' },
-      { name: 'Kano', cue: '区分基本型、期望型、魅力型和低优先级需求。' },
-      { name: 'AHP', cue: '用权重比较筛选关键需求，保留决策依据。' },
-    ],
-  },
-  prototype: {
-    symbol: '迭',
-    tone: 'green',
-    outcome: '形成服务蓝图、触点原型、测试反馈和迭代方案。',
-    tools: [
-      { name: '服务蓝图', cue: '梳理前台行为、后台支持、证据和失败点。' },
-      { name: 'SERVQUAL', cue: '从可靠性、响应性、保证性、移情性和有形性评估体验。' },
-      { name: 'TOPSIS', cue: '综合创新、可行、质量和风险排序方案。' },
-    ],
-  },
+const STORAGE_KEY = 'service-design-studio-v01';
+const ACCESS_CODE_KEY = 'service-design-access-code';
+const SESSION_TOKEN_KEY = 'service-design-session-token';
+const MODEL_SETTINGS_KEY = 'service-design-model-settings';
+const REQUEST_TIMEOUT_MS = 15000;
+
+const sampleStudentsText = `20260101 陈一 产品设计1班
+20260102 林二 产品设计1班
+20260103 周三 产品设计1班
+20260104 吴四 产品设计1班
+20260105 郑五 产品设计1班
+20260106 王六 产品设计1班
+20260107 赵七 产品设计1班
+20260108 孙八 产品设计1班
+20260109 李九 产品设计1班
+20260110 钱十 产品设计1班`;
+
+let state = loadState();
+let backendAvailable = false;
+let backendSaveTimer = null;
+let appConfig = { authRequired: false, providers: [] };
+let accessCode = sessionStorage.getItem(ACCESS_CODE_KEY) || '';
+let sessionToken = sessionStorage.getItem(SESSION_TOKEN_KEY) || '';
+let modelSettings = loadModelSettings();
+let activeAuthMode = 'login';
+let activeLoginRole = 'student';
+let activeRegisterRole = 'student';
+let currentUser = null;
+let activeRole = 'teacher';
+let activeGroupId = state.groups[0]?.id || 'g1';
+let activeStageId = 'empathy';
+
+const els = {
+  body: document.body,
+  roleButtons: [...document.querySelectorAll('[data-role]')],
+  studentList: document.querySelector('#studentList'),
+  groupSize: document.querySelector('#groupSize'),
+  buildGroups: document.querySelector('#buildGroups'),
+  stageNav: document.querySelector('#stageNav'),
+  groupList: document.querySelector('#groupList'),
+  activeStageLabel: document.querySelector('#activeStageLabel'),
+  activeProjectTitle: document.querySelector('#activeProjectTitle'),
+  overallProgress: document.querySelector('#overallProgress'),
+  dashboardEvidence: document.querySelector('#dashboardEvidence'),
+  dashboardNeeds: document.querySelector('#dashboardNeeds'),
+  dashboardRisk: document.querySelector('#dashboardRisk'),
+  projectTitle: document.querySelector('#projectTitle'),
+  projectScenario: document.querySelector('#projectScenario'),
+  stageTitle: document.querySelector('#stageTitle'),
+  stageFocus: document.querySelector('#stageFocus'),
+  methodToolkit: document.querySelector('#methodToolkit'),
+  stageOutcome: document.querySelector('#stageOutcome'),
+  evidenceList: document.querySelector('#evidenceList'),
+  addEvidence: document.querySelector('#addEvidence'),
+  needList: document.querySelector('#needList'),
+  addNeed: document.querySelector('#addNeed'),
+  conceptList: document.querySelector('#conceptList'),
+  addConcept: document.querySelector('#addConcept'),
+  progressBars: document.querySelector('#progressBars'),
+  wordCloud: document.querySelector('#wordCloud'),
+  rankChart: document.querySelector('#rankChart'),
+  competencyRadar: document.querySelector('#competencyRadar'),
+  assistantAdvice: document.querySelector('#assistantAdvice'),
+  importData: document.querySelector('#importData'),
+  importFile: document.querySelector('#importFile'),
+  exportData: document.querySelector('#exportData'),
+  resetDemo: document.querySelector('#resetDemo'),
+  authGate: document.querySelector('#authGate'),
+  authTabs: document.querySelector('#authTabs'),
+  loginForm: document.querySelector('#loginForm'),
+  registerForm: document.querySelector('#registerForm'),
+  codeForm: document.querySelector('#codeForm'),
+  loginRoleChoice: document.querySelector('#loginRoleChoice'),
+  registerRoleChoice: document.querySelector('#registerRoleChoice'),
+  loginIdentityLabel: document.querySelector('#loginIdentityLabel'),
+  loginStudentId: document.querySelector('#loginStudentId'),
+  loginPassword: document.querySelector('#loginPassword'),
+  loginAccount: document.querySelector('#loginAccount'),
+  registerName: document.querySelector('#registerName'),
+  registerClassField: document.querySelector('#registerClassField'),
+  registerClass: document.querySelector('#registerClass'),
+  registerIdentityLabel: document.querySelector('#registerIdentityLabel'),
+  registerStudentId: document.querySelector('#registerStudentId'),
+  registerIdentityHint: document.querySelector('#registerIdentityHint'),
+  registerPassword: document.querySelector('#registerPassword'),
+  registerAccount: document.querySelector('#registerAccount'),
+  accessCodeInput: document.querySelector('#accessCodeInput'),
+  unlockApp: document.querySelector('#unlockApp'),
+  authMessage: document.querySelector('#authMessage'),
+  modelProvider: document.querySelector('#modelProvider'),
+  modelStatus: document.querySelector('#modelStatus'),
+  modelApiKey: document.querySelector('#modelApiKey'),
+  modelName: document.querySelector('#modelName'),
+  modelBaseUrl: document.querySelector('#modelBaseUrl'),
+  saveModelSettings: document.querySelector('#saveModelSettings'),
+  modelPrompt: document.querySelector('#modelPrompt'),
+  generateWithModel: document.querySelector('#generateWithModel'),
+  modelResult: document.querySelector('#modelResult'),
+  userProfile: document.querySelector('#userProfile'),
+  userAvatar: document.querySelector('#userAvatar'),
+  userName: document.querySelector('#userName'),
+  userMeta: document.querySelector('#userMeta'),
+  logoutAccount: document.querySelector('#logoutAccount'),
 };
 
-export function getStageToolkit(stageId) {
-  return STAGE_TOOLKITS[stageId] || STAGE_TOOLKITS.empathy;
+init();
+
+async function init() {
+  els.studentList.value = state.studentText;
+  bindEvents();
+  render();
+  await loadPublicConfig();
+  renderModelProviders();
+  if (appConfig.authRequired && !sessionToken && !accessCode) {
+    showAuthGate();
+    return;
+  }
+  await loadCurrentUser();
+  await loadBackendState();
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
 }
 
-export function getRiskStatus(progress) {
-  const value = Number(progress) || 0;
-  if (value < 40) return { label: '高关注', tone: 'danger', suggestion: '需要教师立即介入，优先补齐过程证据。' };
-  if (value < 70) return { label: '需推进', tone: 'warning', suggestion: '已有基础进展，应推进需求筛选和方案验证。' };
-  return { label: '稳定', tone: 'success', suggestion: '进度较稳定，可加强测试迭代和成果表达。' };
-}
-
-export function createGroups(students, groupSize = 5) {
-  const safeSize = Math.max(1, Number(groupSize) || 5);
-  const cleanStudents = students
-    .map((student, index) => ({
-      id: student.id || `s${index + 1}`,
-      name: String(student.name || '').trim(),
-      className: String(student.className || '').trim(),
-    }))
-    .filter((student) => student.name);
-
-  const groups = [];
-  for (let index = 0; index < cleanStudents.length; index += safeSize) {
-    groups.push({
-      id: `g${groups.length + 1}`,
-      name: `第${groups.length + 1}组`,
-      members: cleanStudents.slice(index, index + safeSize),
-      project: createEmptyProject(),
+function bindEvents() {
+  els.roleButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      if (currentUser?.role === 'student' && button.dataset.role === 'teacher') {
+        window.alert('学生账号只能使用学生端。');
+        return;
+      }
+      activeRole = button.dataset.role;
+      render();
     });
-  }
-  return groups;
-}
-
-export function createEmptyProject() {
-  return {
-    title: '未命名服务设计项目',
-    scenario: '请描述真实服务场景、目标用户与初步问题。',
-    stages: {
-      empathy: { evidence: [] },
-      define: { evidence: [] },
-      prototype: { evidence: [] },
-    },
-    needs: [],
-    concepts: [],
-    feedback: [],
-  };
-}
-
-export function calculateStageProgress(project) {
-  const result = {};
-  let sum = 0;
-  STAGES.forEach((stage) => {
-    const evidence = project?.stages?.[stage.id]?.evidence || [];
-    const completed = evidence.filter((item) => item.title && item.content).length;
-    const percent = Math.min(100, completed * 50);
-    result[stage.id] = percent;
-    sum += percent;
-  });
-  result.overall = Math.round(sum / STAGES.length);
-  return result;
-}
-
-export function classifyKano(importance, satisfaction) {
-  const imp = Number(importance);
-  const sat = Number(satisfaction);
-  if (imp >= 4 && sat <= 2) return '魅力型需求';
-  if (imp >= 4 && sat <= 4) return '期望型需求';
-  if (imp >= 4 && sat > 4) return '基本型需求';
-  if (imp <= 2 && sat >= 4) return '低优先级需求';
-  if (imp <= 2 && sat <= 2) return '观察型需求';
-  return '可优化需求';
-}
-
-export function calculateAhpWeights(matrix) {
-  if (!Array.isArray(matrix) || matrix.length === 0) return [];
-  const geometricMeans = matrix.map((row) => {
-    const product = row.reduce((acc, value) => acc * Math.max(Number(value) || 0.0001, 0.0001), 1);
-    return product ** (1 / row.length);
-  });
-  const total = geometricMeans.reduce((sum, value) => sum + value, 0) || 1;
-  return geometricMeans.map((value) => value / total);
-}
-
-export function rankByTopsis(items, criteria) {
-  if (!items.length || !criteria.length) return [];
-  const normalized = {};
-  criteria.forEach((criterion) => {
-    const denominator = Math.sqrt(
-      items.reduce((sum, item) => sum + (Number(item[criterion.key]) || 0) ** 2, 0),
-    ) || 1;
-    normalized[criterion.key] = items.map((item) => (Number(item[criterion.key]) || 0) / denominator);
   });
 
-  const weightedRows = items.map((item, rowIndex) => {
-    const values = {};
-    criteria.forEach((criterion) => {
-      values[criterion.key] = normalized[criterion.key][rowIndex] * criterion.weight;
+  els.buildGroups.addEventListener('click', () => {
+    const students = parseStudentText(els.studentList.value);
+    state.studentText = els.studentList.value;
+    state.groups = createGroups(students, Number(els.groupSize.value));
+    seedProjects(state.groups);
+    activeGroupId = state.groups[0]?.id || activeGroupId;
+    saveState();
+    render();
+  });
+
+  els.stageNav.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-stage-id]');
+    if (!button) return;
+    activeStageId = button.dataset.stageId;
+    render();
+  });
+
+  els.groupList.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-group-id]');
+    if (!button) return;
+    activeGroupId = button.dataset.groupId;
+    render();
+  });
+
+  els.projectTitle.addEventListener('input', () => {
+    activeGroup().project.title = els.projectTitle.value;
+    saveState();
+    renderLight();
+  });
+
+  els.projectScenario.addEventListener('input', () => {
+    activeGroup().project.scenario = els.projectScenario.value;
+    saveState();
+    renderLight();
+  });
+
+  els.addEvidence.addEventListener('click', () => {
+    const stage = activeProject().stages[activeStageId];
+    stage.evidence.push({
+      title: '新证据',
+      content: '请记录证据来源、关键发现和与项目的关系。',
+      updatedAt: new Date().toISOString(),
     });
-    return { item, values };
+    saveState();
+    render();
   });
 
-  const idealBest = {};
-  const idealWorst = {};
-  criteria.forEach((criterion) => {
-    const values = weightedRows.map((row) => row.values[criterion.key]);
-    idealBest[criterion.key] =
-      criterion.direction === 'cost' ? Math.min(...values) : Math.max(...values);
-    idealWorst[criterion.key] =
-      criterion.direction === 'cost' ? Math.max(...values) : Math.min(...values);
+  els.addNeed.addEventListener('click', () => {
+    activeProject().needs.push({
+      title: '新增需求',
+      importance: 4,
+      satisfaction: 2,
+    });
+    saveState();
+    render();
   });
 
-  return weightedRows
-    .map((row) => {
-      const bestDistance = euclideanDistance(row.values, idealBest, criteria);
-      const worstDistance = euclideanDistance(row.values, idealWorst, criteria);
-      const score = worstDistance / ((bestDistance + worstDistance) || 1);
-      return { ...row.item, score: Number(score.toFixed(4)) };
-    })
-    .sort((a, b) => b.score - a.score);
+  els.addConcept.addEventListener('click', () => {
+    activeProject().concepts.push({
+      title: '新增方案',
+      novelty: 3,
+      feasibility: 3,
+      serviceQuality: 3,
+      risk: 2,
+    });
+    saveState();
+    render();
+  });
+
+  els.evidenceList.addEventListener('input', updateEvidence);
+  els.needList.addEventListener('input', updateNeeds);
+  els.conceptList.addEventListener('input', updateConcepts);
+
+  els.importData.addEventListener('click', () => {
+    els.importFile.click();
+  });
+
+  els.importFile.addEventListener('change', async () => {
+    const file = els.importFile.files?.[0];
+    if (!file) return;
+    try {
+      const imported = JSON.parse(await file.text());
+      const result = validateClassroomState(imported);
+      if (!result.ok) {
+        window.alert(result.error);
+        return;
+      }
+      Object.assign(state, result.value);
+      activeGroupId = state.groups[0].id;
+      activeStageId = 'empathy';
+      els.studentList.value = state.studentText;
+      saveState();
+      render();
+    } catch {
+      window.alert('导入失败：请确认文件为有效 JSON。');
+    } finally {
+      els.importFile.value = '';
+    }
+  });
+
+  els.exportData.addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'service-design-classroom-data-v01.json';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  });
+
+  els.resetDemo.addEventListener('click', () => {
+    Object.assign(state, createSampleState());
+    activeGroupId = state.groups[0].id;
+    activeStageId = 'empathy';
+    saveState();
+    render();
+  });
+
+  els.authTabs.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-auth-mode]');
+    if (!button) return;
+    activeAuthMode = button.dataset.authMode;
+    renderAuthMode();
+  });
+  els.loginRoleChoice.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-login-role]');
+    if (!button) return;
+    activeLoginRole = button.dataset.loginRole;
+    renderAuthRoleForms();
+  });
+  els.registerRoleChoice.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-register-role]');
+    if (!button) return;
+    activeRegisterRole = button.dataset.registerRole;
+    renderAuthRoleForms();
+  });
+  els.loginAccount.addEventListener('click', loginAccount);
+  els.registerAccount.addEventListener('click', registerAccount);
+  els.unlockApp.addEventListener('click', unlockWithAccessCode);
+  els.logoutAccount.addEventListener('click', logoutAccount);
+  els.saveModelSettings.addEventListener('click', saveModelSettings);
+  els.modelProvider.addEventListener('change', () => {
+    modelSettings.provider = els.modelProvider.value;
+    applyModelSettingsToForm();
+  });
+  els.loginPassword.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') loginAccount();
+  });
+  els.registerPassword.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') registerAccount();
+  });
+  els.accessCodeInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') unlockWithAccessCode();
+  });
+  els.generateWithModel.addEventListener('click', generateModelAdvice);
 }
 
-export function buildAssistantAdvice(project, stageId) {
-  const progress = calculateStageProgress(project);
-  const stage = STAGES.find((item) => item.id === stageId) || STAGES[0];
-  const evidence = project?.stages?.[stage.id]?.evidence || [];
-  const advice = [
-    `当前处于“${stage.title}”阶段，建议围绕“${stage.focus}”补齐证据。`,
-  ];
-
-  if (stage.id === 'empathy') {
-    advice.push('优先完成至少3类调研证据：访谈、观察、问卷或服务探险，避免只凭主观经验定义问题。');
-    advice.push('将访谈原话转化为关键词，可用于词云和痛点聚类。');
-  }
-  if (stage.id === 'define') {
-    advice.push('先用用户画像和利益相关者地图界定对象，再用Kano或AHP筛选关键需求。');
-    advice.push('每个核心需求都要能回溯到调研证据，形成“证据-需求-方案”的链条。');
-  }
-  if (stage.id === 'prototype') {
-    advice.push('先建立服务蓝图，再选择关键触点制作原型，最后用SERVQUAL或TOPSIS进行测试评价。');
-    advice.push('保留原型、测试反馈和修改记录，形成数据闭环。');
-  }
-
-  if (evidence.length < 2) {
-    advice.push('本阶段证据数量偏少，建议至少提交2项高质量证据后再进入下一阶段。');
-  }
-  if (progress.overall < 60) {
-    advice.push('整体进度尚未过半，教师端可将该组标记为需要课堂巡回指导。');
-  } else {
-    advice.push('整体进度已形成基础闭环，可继续加强方案验证和成果表达。');
-  }
-  return advice;
+function updateEvidence(event) {
+  const field = event.target.closest('[data-evidence-index]');
+  if (!field) return;
+  const index = Number(field.dataset.evidenceIndex);
+  const key = field.dataset.key;
+  const item = activeProject().stages[activeStageId].evidence[index];
+  item[key] = field.value;
+  item.updatedAt = new Date().toISOString();
+  saveState();
+  renderLight();
 }
 
-export function calculateCompetencyProfile(project) {
-  const stages = project?.stages || {};
-  const empathyEvidence = stages.empathy?.evidence?.length || 0;
-  const defineEvidence = stages.define?.evidence?.length || 0;
-  const prototypeEvidence = stages.prototype?.evidence?.length || 0;
-  const needs = project?.needs?.length || 0;
-  const concepts = project?.concepts?.length || 0;
-  const feedback = project?.feedback?.length || 0;
+function updateNeeds(event) {
+  const field = event.target.closest('[data-need-index]');
+  if (!field) return;
+  const item = activeProject().needs[Number(field.dataset.needIndex)];
+  item[field.dataset.key] = field.type === 'number' ? Number(field.value) : field.value;
+  saveState();
+  renderLight();
+}
 
+function updateConcepts(event) {
+  const field = event.target.closest('[data-concept-index]');
+  if (!field) return;
+  const item = activeProject().concepts[Number(field.dataset.conceptIndex)];
+  item[field.dataset.key] = field.type === 'number' ? Number(field.value) : field.value;
+  saveState();
+  renderLight();
+}
+
+async function loadPublicConfig() {
+  if (location.protocol === 'file:') return;
+  try {
+    const response = await fetch('./api/config', { cache: 'no-store' });
+    if (response.ok) {
+      appConfig = await response.json();
+    }
+  } catch {
+    appConfig = { authRequired: false, providers: [] };
+  }
+}
+
+function showAuthGate(message = '') {
+  els.authGate.hidden = false;
+  renderAuthMode();
+  els.accessCodeInput.value = accessCode;
+  els.authMessage.textContent = message;
+  const focusTarget = activeAuthMode === 'register' ? els.registerName : activeAuthMode === 'code' ? els.accessCodeInput : els.loginStudentId;
+  setTimeout(() => focusTarget.focus(), 0);
+}
+
+function hideAuthGate() {
+  els.authGate.hidden = true;
+  els.authMessage.textContent = '';
+}
+
+function renderAuthMode() {
+  els.authTabs.querySelectorAll('[data-auth-mode]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.authMode === activeAuthMode);
+  });
+  els.loginForm.hidden = activeAuthMode !== 'login';
+  els.registerForm.hidden = activeAuthMode !== 'register';
+  els.codeForm.hidden = activeAuthMode !== 'code';
+  renderAuthRoleForms();
+}
+
+function renderAuthRoleForms() {
+  els.loginRoleChoice.querySelectorAll('[data-login-role]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.loginRole === activeLoginRole);
+  });
+  els.registerRoleChoice.querySelectorAll('[data-register-role]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.registerRole === activeRegisterRole);
+  });
+
+  const loginIsTeacher = activeLoginRole === 'teacher';
+  els.loginIdentityLabel.textContent = loginIsTeacher ? '工号' : '学号';
+  els.loginStudentId.maxLength = loginIsTeacher ? 8 : 9;
+  els.loginStudentId.placeholder = loginIsTeacher ? '021XXXXX' : '21XX17XXX';
+
+  const registerIsTeacher = activeRegisterRole === 'teacher';
+  els.registerClassField.hidden = registerIsTeacher;
+  els.registerIdentityLabel.textContent = registerIsTeacher ? '工号' : '学号';
+  els.registerStudentId.maxLength = registerIsTeacher ? 8 : 9;
+  els.registerStudentId.placeholder = registerIsTeacher ? '8位数字，如 02112345' : '9位数字，如 210117001';
+  els.registerIdentityHint.textContent = registerIsTeacher
+    ? '教师工号规则：8 位数字，前三位固定为 021。'
+    : '学号规则：9 位数字，第 1-2 位为 21，第 5-6 位为 17。';
+}
+
+async function loginAccount() {
+  await authenticateAccount('./api/auth/login', {
+    role: activeLoginRole,
+    studentId: els.loginStudentId.value,
+    teacherId: els.loginStudentId.value,
+    password: els.loginPassword.value,
+  });
+}
+
+async function registerAccount() {
+  await authenticateAccount('./api/auth/register', {
+    role: activeRegisterRole,
+    name: els.registerName.value,
+    className: activeRegisterRole === 'student' ? els.registerClass.value : '',
+    studentId: els.registerStudentId.value,
+    teacherId: els.registerStudentId.value,
+    password: els.registerPassword.value,
+  });
+}
+
+async function authenticateAccount(url, payload) {
+  setAuthBusy(true);
+  els.authMessage.textContent = '正在连接课堂服务器，请稍候...';
+  try {
+    const response = await fetchWithTimeout(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const result = await safeJson(response);
+    if (!response.ok || !result.ok) {
+      els.authMessage.textContent = result.error || '账号验证失败，请检查填写内容。';
+      return;
+    }
+    sessionToken = result.token;
+    currentUser = result.user || null;
+    applyRolePermissions();
+    accessCode = '';
+    sessionStorage.setItem(SESSION_TOKEN_KEY, sessionToken);
+    sessionStorage.removeItem(ACCESS_CODE_KEY);
+    hideAuthGate();
+    renderUserProfile();
+    await loadBackendState();
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  } catch (error) {
+    els.authMessage.textContent = error.name === 'AbortError'
+      ? '课堂服务器响应超时，请刷新页面后重试。'
+      : '无法连接课堂服务器，请稍后重试。';
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+function setAuthBusy(isBusy) {
+  els.loginAccount.disabled = isBusy;
+  els.registerAccount.disabled = isBusy;
+  els.unlockApp.disabled = isBusy;
+}
+
+function logoutAccount() {
+  sessionToken = '';
+  accessCode = '';
+  currentUser = null;
+  sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  sessionStorage.removeItem(ACCESS_CODE_KEY);
+  renderUserProfile();
+  showAuthGate('已退出，请重新登录。');
+}
+
+async function unlockWithAccessCode() {
+  const nextCode = els.accessCodeInput.value.trim();
+  if (!nextCode) {
+    showAuthGate('请输入课堂访问口令。');
+    return;
+  }
+  accessCode = nextCode;
+  sessionToken = '';
+  els.authMessage.textContent = '正在验证课堂口令...';
+  try {
+    const response = await apiFetch('./api/auth/check', { method: 'POST' });
+    if (!response.ok) {
+      sessionStorage.removeItem(ACCESS_CODE_KEY);
+      showAuthGate('口令不正确，请向教师确认。');
+      return;
+    }
+    sessionStorage.setItem(ACCESS_CODE_KEY, accessCode);
+    sessionStorage.removeItem(SESSION_TOKEN_KEY);
+    currentUser = { name: '教师口令', role: 'teacher', teacherId: 'access-code' };
+    applyRolePermissions();
+    hideAuthGate();
+    renderUserProfile();
+    await loadBackendState();
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  } catch (error) {
+    showAuthGate(error.name === 'AbortError' ? '课堂服务器响应超时，请刷新页面后重试。' : '无法连接课堂服务器，请稍后重试。');
+  }
+}
+
+function renderModelProviders() {
+  const providers = appConfig.providers || [];
+  if (!providers.length) {
+    els.modelProvider.innerHTML = '<option value="">离线规则助手</option>';
+    els.modelStatus.textContent = '离线';
+    return;
+  }
+
+  els.modelProvider.innerHTML = providers.map((provider) => `
+    <option value="${escapeHtml(provider.id)}">
+      ${escapeHtml(provider.name)}
+    </option>
+  `).join('');
+
+  els.modelStatus.textContent = '个人接入';
+  els.modelProvider.value = modelSettings.provider || providers[0]?.id || '';
+  applyModelSettingsToForm();
+}
+
+function applyModelSettingsToForm() {
+  const providerSettings = getCurrentProviderSettings();
+  els.modelApiKey.value = providerSettings.apiKey || '';
+  els.modelName.value = providerSettings.model || defaultModelName(els.modelProvider.value);
+  els.modelBaseUrl.value = providerSettings.baseUrl || '';
+}
+
+function saveModelSettings() {
+  const provider = els.modelProvider.value;
+  if (!provider) {
+    els.modelResult.textContent = '请先选择模型服务商。';
+    return;
+  }
+  modelSettings.provider = provider;
+  modelSettings.providers = modelSettings.providers || {};
+  modelSettings.providers[provider] = {
+    apiKey: els.modelApiKey.value.trim(),
+    model: els.modelName.value.trim(),
+    baseUrl: els.modelBaseUrl.value.trim(),
+  };
+  localStorage.setItem(MODEL_SETTINGS_KEY, JSON.stringify(modelSettings));
+  els.modelStatus.textContent = modelSettings.providers[provider].apiKey ? '已保存' : '缺少 Key';
+  els.modelResult.textContent = modelSettings.providers[provider].apiKey
+    ? '个人模型设置已保存到当前浏览器。'
+    : '模型设置已保存，但生成建议前仍需填写 API Key。';
+}
+
+async function generateModelAdvice() {
+  const provider = els.modelProvider.value;
+  const prompt = els.modelPrompt.value.trim();
+  const providerSettings = collectModelSettingsFromForm();
+  if (!provider) {
+    els.modelResult.textContent = '请先选择模型服务商。';
+    return;
+  }
+  if (!providerSettings.apiKey) {
+    els.modelResult.textContent = '请先填写个人 API Key。Key 默认只保存在当前浏览器。';
+    return;
+  }
+  if (!prompt) {
+    els.modelResult.textContent = '请先输入要交给模型处理的服务设计任务。';
+    return;
+  }
+
+  els.generateWithModel.disabled = true;
+  els.modelResult.textContent = '正在生成，请稍候...';
+  try {
+    const response = await apiFetch('./api/llm/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        provider,
+        apiKey: providerSettings.apiKey,
+        model: providerSettings.model,
+        baseUrl: providerSettings.baseUrl,
+        prompt,
+        context: buildCurrentModelContext(),
+      }),
+    });
+    const result = await response.json();
+    if (response.status === 401) {
+      showAuthGate('访问口令已失效，请重新输入。');
+      return;
+    }
+    els.modelResult.textContent = result.ok ? result.content : result.error || '模型未返回有效结果。';
+  } catch {
+    els.modelResult.textContent = '模型服务暂时不可用，请检查个人 API Key、模型名或网络状态。';
+  } finally {
+    els.generateWithModel.disabled = false;
+  }
+}
+
+function collectModelSettingsFromForm() {
   return {
-    知识掌握: clampScore((empathyEvidence + defineEvidence + prototypeEvidence) * 18),
-    用户研究: clampScore(empathyEvidence * 34),
-    问题定义: clampScore(defineEvidence * 30 + needs * 12),
-    方案创造: clampScore(concepts * 28 + needs * 8),
-    测试迭代: clampScore(prototypeEvidence * 30 + feedback * 20),
+    apiKey: els.modelApiKey.value.trim(),
+    model: els.modelName.value.trim(),
+    baseUrl: els.modelBaseUrl.value.trim(),
   };
 }
 
-export function validateClassroomState(input) {
-  if (!input || !Array.isArray(input.groups) || input.groups.length === 0) {
-    return { ok: false, error: '导入文件缺少小组数据。' };
-  }
+function getCurrentProviderSettings() {
+  return modelSettings.providers?.[els.modelProvider.value] || {};
+}
 
-  const groups = input.groups
-    .map((group, groupIndex) => {
-      const project = normalizeProject(group.project);
-      return {
-        id: String(group.id || `g${groupIndex + 1}`),
-        name: String(group.name || `第${groupIndex + 1}组`),
-        members: Array.isArray(group.members)
-          ? group.members.map((member, memberIndex) => ({
-              id: String(member.id || `s${memberIndex + 1}`),
-              name: String(member.name || '').trim(),
-              className: String(member.className || '').trim(),
-            })).filter((member) => member.name)
-          : [],
-        project,
-      };
-    })
-    .filter((group) => group.members.length > 0);
+function defaultModelName(provider) {
+  const defaults = {
+    openai: 'gpt-4.1-mini',
+    deepseek: 'deepseek-chat',
+    kimi: 'moonshot-v1-8k',
+    zhipu: 'glm-4-flash',
+    doubao: 'doubao-seed-1-6',
+    custom: 'custom-model',
+  };
+  return defaults[provider] || '';
+}
 
-  if (groups.length === 0) {
-    return { ok: false, error: '导入文件中的小组没有有效成员。' };
-  }
-
+function buildCurrentModelContext() {
+  const project = activeProject();
+  const stage = activeStage();
+  const evidence = project.stages[activeStageId]?.evidence || [];
   return {
-    ok: true,
-    value: {
-      studentText: String(input.studentText || ''),
-      groups,
-    },
+    projectTitle: project.title,
+    scenario: project.scenario,
+    stage: stage.title,
+    stageFocus: stage.focus,
+    evidence: evidence.map((item) => `${item.title}: ${item.content}`).join('\n'),
+    needs: project.needs.map((item) => `${item.title} 重要度${item.importance} 满意度${item.satisfaction}`).join('\n'),
+    concepts: project.concepts.map((item) => `${item.title} 创新${item.novelty} 可行${item.feasibility} 质量${item.serviceQuality} 风险${item.risk}`).join('\n'),
   };
 }
 
-export function parseStudentText(text) {
-  return String(text || '')
-    .split(/\r?\n/)
-    .map((line, index) => {
-      const parts = line.split(/[,，\t ]+/).filter(Boolean);
-      return {
-        id: parts[0]?.match(/^\d/) ? parts[0] : `s${index + 1}`,
-        name: parts[0]?.match(/^\d/) ? parts[1] || '' : parts[0] || '',
-        className: parts[0]?.match(/^\d/) ? parts[2] || '' : parts[1] || '',
-      };
-    })
-    .filter((student) => student.name);
+function render() {
+  applyRolePermissions();
+  els.body.classList.toggle('student-mode', activeRole === 'student');
+  els.roleButtons.forEach((button) => button.classList.toggle('active', button.dataset.role === activeRole));
+  renderStages();
+  renderGroups();
+  renderProject();
+  renderToolkit();
+  renderStage();
+  renderEvidence();
+  renderNeeds();
+  renderConcepts();
+  renderLight();
 }
 
-export function extractKeywords(text) {
-  const stopWords = new Set(['我们', '他们', '这个', '那个', '以及', '进行', '服务', '用户', '需要']);
-  const matches = String(text || '').match(/[\u4e00-\u9fa5]{2,}|[A-Za-z]{3,}/g) || [];
-  const counts = new Map();
-  matches.forEach((word) => {
-    if (stopWords.has(word)) return;
-    counts.set(word, (counts.get(word) || 0) + 1);
+async function loadCurrentUser() {
+  if (!sessionToken || location.protocol === 'file:') {
+    renderUserProfile();
+    return;
+  }
+  try {
+    const response = await apiFetch('./api/me', { cache: 'no-store' });
+    if (!response.ok) {
+      currentUser = null;
+      sessionToken = '';
+      sessionStorage.removeItem(SESSION_TOKEN_KEY);
+      return;
+    }
+    const result = await response.json();
+    currentUser = result.user || null;
+    applyRolePermissions();
+    renderUserProfile();
+  } catch {
+    renderUserProfile();
+  }
+}
+
+function applyRolePermissions() {
+  if (currentUser?.role === 'student') {
+    activeRole = 'student';
+  }
+  els.roleButtons.forEach((button) => {
+    const locked = currentUser?.role === 'student' && button.dataset.role === 'teacher';
+    button.disabled = locked;
+    button.title = locked ? '学生账号不能进入教师端' : '';
+    button.classList.toggle('locked', locked);
   });
-  return [...counts.entries()]
-    .map(([word, count]) => ({ word, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 18);
 }
 
-function euclideanDistance(values, ideal, criteria) {
-  return Math.sqrt(
-    criteria.reduce((sum, criterion) => sum + (values[criterion.key] - ideal[criterion.key]) ** 2, 0),
+function renderUserProfile() {
+  const hasUser = Boolean(currentUser || accessCode);
+  els.userProfile.hidden = !hasUser;
+  els.logoutAccount.hidden = !hasUser;
+  if (!hasUser) return;
+  const user = currentUser || { name: '教师口令', role: 'teacher' };
+  const identity = user.role === 'teacher'
+    ? `教师 · ${user.teacherId || '口令进入'}`
+    : `学生 · ${user.studentId || ''}${user.className ? ` · ${user.className}` : ''}`;
+  els.userName.textContent = user.name || '未命名用户';
+  els.userMeta.textContent = identity;
+  els.userAvatar.textContent = buildAvatarText(user.name || user.role);
+}
+
+function buildAvatarText(name) {
+  const text = String(name || 'SD').trim();
+  if (!text) return 'SD';
+  return text.slice(0, 2).toUpperCase();
+}
+
+function renderLight() {
+  renderHeader();
+  renderVisuals();
+  renderAssistant();
+}
+
+function renderStages() {
+  const progress = calculateStageProgress(activeProject());
+  els.stageNav.innerHTML = STAGES.map((stage) => {
+    const active = stage.id === activeStageId ? ' active' : '';
+    return `<button class="stage-button${active}" data-stage-id="${stage.id}">
+      <span class="stage-dot">${stage.shortTitle}</span>
+      <span class="stage-copy">
+        <strong>${stage.title}</strong>
+        <small>${stage.focus}</small>
+      </span>
+      <span class="stage-percent">${progress[stage.id]}%</span>
+    </button>`;
+  }).join('');
+}
+
+function renderGroups() {
+  els.groupList.innerHTML = state.groups.map((group) => {
+    const active = group.id === activeGroupId ? ' active' : '';
+    const progress = calculateStageProgress(group.project);
+    return `<button class="group-button${active}" data-group-id="${group.id}">
+      <span>
+        <strong>${group.name}</strong>
+        <small>${group.members.map((member) => member.name).join('、')}</small>
+      </span>
+      <span class="group-progress">${progress.overall}%</span>
+    </button>`;
+  }).join('');
+}
+
+function renderHeader() {
+  const group = activeGroup();
+  const stage = activeStage();
+  const progress = calculateStageProgress(group.project);
+  const risk = getRiskStatus(progress.overall);
+  els.activeStageLabel.textContent = stage.title;
+  els.activeProjectTitle.textContent = `${group.name}：${group.project.title}`;
+  els.overallProgress.textContent = `${progress.overall}%`;
+  const evidenceCount = STAGES.reduce(
+    (sum, item) => sum + (group.project.stages[item.id]?.evidence?.length || 0),
+    0,
   );
+  els.dashboardEvidence.textContent = evidenceCount;
+  els.dashboardNeeds.textContent = group.project.needs.length;
+  els.dashboardRisk.textContent = risk.label;
+  els.dashboardRisk.closest('.stat-card').dataset.tone = risk.tone;
 }
 
-function normalizeProject(project = {}) {
-  const normalized = createEmptyProject();
-  normalized.title = String(project.title || normalized.title);
-  normalized.scenario = String(project.scenario || normalized.scenario);
-  STAGES.forEach((stage) => {
-    normalized.stages[stage.id].evidence = Array.isArray(project.stages?.[stage.id]?.evidence)
-      ? project.stages[stage.id].evidence.map((item) => ({
-          title: String(item.title || ''),
-          content: String(item.content || ''),
-          updatedAt: item.updatedAt || new Date().toISOString(),
-        }))
-      : [];
+function renderProject() {
+  const project = activeProject();
+  els.projectTitle.value = project.title;
+  els.projectScenario.value = project.scenario;
+}
+
+function renderStage() {
+  const stage = activeStage();
+  els.stageTitle.textContent = `${stage.title}任务`;
+  els.stageFocus.textContent = stage.focus;
+}
+
+function renderToolkit() {
+  const toolkit = getStageToolkit(activeStageId);
+  els.stageOutcome.textContent = toolkit.outcome;
+  els.stageOutcome.dataset.tone = toolkit.tone;
+  els.methodToolkit.innerHTML = toolkit.tools.map((tool, index) => `
+    <article class="tool-card" data-tone="${toolkit.tone}">
+      <span class="tool-symbol">${toolkit.symbol}${index + 1}</span>
+      <div>
+        <h3>${escapeHtml(tool.name)}</h3>
+        <p>${escapeHtml(tool.cue)}</p>
+      </div>
+    </article>
+  `).join('');
+}
+
+function renderEvidence() {
+  const evidence = activeProject().stages[activeStageId].evidence;
+  if (!evidence.length) {
+    els.evidenceList.innerHTML = '<div class="empty-state">尚未提交证据。建议先添加访谈、观察、旅程图、服务蓝图或测试反馈。</div>';
+    return;
+  }
+  els.evidenceList.innerHTML = evidence.map((item, index) => `
+    <article class="evidence-item">
+      <div class="card-meta">
+        <span class="status-chip">${getEvidenceType(item.title)}</span>
+        <small>${formatDate(item.updatedAt)}</small>
+      </div>
+      <label>证据标题
+        <input data-evidence-index="${index}" data-key="title" value="${escapeHtml(item.title)}" />
+      </label>
+      <label>证据内容
+        <textarea rows="4" data-evidence-index="${index}" data-key="content">${escapeHtml(item.content)}</textarea>
+      </label>
+    </article>
+  `).join('');
+}
+
+function renderNeeds() {
+  const needs = activeProject().needs;
+  els.needList.innerHTML = needs.map((need, index) => {
+    const kano = classifyKano(need.importance, need.satisfaction);
+    const priority = Math.round((Number(need.importance) * (6 - Number(need.satisfaction))) / 25 * 100);
+    return `<article class="list-item">
+      <div class="list-item-header">
+        <input data-need-index="${index}" data-key="title" value="${escapeHtml(need.title)}" />
+        <span class="pill">${kano}</span>
+      </div>
+      ${renderMiniBar('优先级', priority)}
+      <div class="metric-row two">
+        <label>重要度<input type="number" min="1" max="5" data-need-index="${index}" data-key="importance" value="${need.importance}" /></label>
+        <label>满意度<input type="number" min="1" max="5" data-need-index="${index}" data-key="satisfaction" value="${need.satisfaction}" /></label>
+      </div>
+    </article>`;
+  }).join('');
+}
+
+function renderConcepts() {
+  const ranked = rankedConcepts();
+  els.conceptList.innerHTML = activeProject().concepts.map((concept, index) => {
+    const rank = ranked.findIndex((item) => item.title === concept.title) + 1;
+    const score = ranked.find((item) => item.title === concept.title)?.score || 0;
+    return `<article class="list-item">
+      <div class="list-item-header">
+        <input data-concept-index="${index}" data-key="title" value="${escapeHtml(concept.title)}" />
+        <span class="pill">排序 ${rank || '-'}</span>
+      </div>
+      ${renderMiniBar('综合得分', Math.round(score * 100))}
+      <div class="metric-row">
+        <label>创新<input type="number" min="1" max="5" data-concept-index="${index}" data-key="novelty" value="${concept.novelty}" /></label>
+        <label>可行<input type="number" min="1" max="5" data-concept-index="${index}" data-key="feasibility" value="${concept.feasibility}" /></label>
+        <label>质量<input type="number" min="1" max="5" data-concept-index="${index}" data-key="serviceQuality" value="${concept.serviceQuality}" /></label>
+        <label>风险<input type="number" min="1" max="5" data-concept-index="${index}" data-key="risk" value="${concept.risk}" /></label>
+      </div>
+    </article>`;
+  }).join('');
+}
+
+function renderVisuals() {
+  const project = activeProject();
+  const progress = calculateStageProgress(project);
+  els.progressBars.innerHTML = STAGES.map((stage) => renderBar(stage.title, progress[stage.id])).join('');
+
+  const text = STAGES.flatMap((stage) => project.stages[stage.id].evidence.map((item) => item.content)).join(' ');
+  const keywords = extractKeywords(`${project.title} ${project.scenario} ${text}`);
+  els.wordCloud.innerHTML = keywords.length
+    ? keywords.map((item) => `<span style="font-size:${12 + item.count * 3}px">${escapeHtml(item.word)}</span>`).join('')
+    : '<span>暂无关键词</span>';
+
+  const ranked = rankedConcepts();
+  els.rankChart.innerHTML = ranked.length
+    ? ranked.map((item) => renderBar(item.title, Math.round(item.score * 100))).join('')
+    : '<p class="muted">添加方案后显示排序。</p>';
+
+  els.competencyRadar.innerHTML = renderRadar(calculateCompetencyProfile(project));
+}
+
+function renderAssistant() {
+  const advice = buildAssistantAdvice(activeProject(), activeStageId);
+  const groups = [
+    { title: '当前任务建议', items: advice.slice(0, 2) },
+    { title: '质量检查', items: advice.slice(2, 4) },
+    { title: '下一步行动', items: advice.slice(4) },
+  ];
+  els.assistantAdvice.innerHTML = groups.map((group) => `
+    <section class="advice-section">
+      <h3>${group.title}</h3>
+      ${group.items.map((item) => `<div class="advice-item">${escapeHtml(item)}</div>`).join('')}
+    </section>
+  `).join('');
+}
+
+function renderBar(label, value) {
+  return `<div class="bar-row">
+    <div class="bar-label"><span>${escapeHtml(label)}</span><span>${value}%</span></div>
+    <div class="bar-track"><div class="bar-fill" style="width:${Math.max(0, Math.min(100, value))}%"></div></div>
+  </div>`;
+}
+
+function renderMiniBar(label, value) {
+  return `<div class="mini-bar">
+    <span>${label}</span>
+    <div class="bar-track"><div class="bar-fill" style="width:${Math.max(0, Math.min(100, value))}%"></div></div>
+    <b>${value}%</b>
+  </div>`;
+}
+
+function renderRadar(profile) {
+  const labels = Object.keys(profile);
+  const center = 96;
+  const maxRadius = 70;
+  const points = labels.map((label, index) => {
+    const angle = (-90 + (360 / labels.length) * index) * (Math.PI / 180);
+    const radius = (profile[label] / 100) * maxRadius;
+    return {
+      label,
+      value: profile[label],
+      x: center + Math.cos(angle) * radius,
+      y: center + Math.sin(angle) * radius,
+      ax: center + Math.cos(angle) * maxRadius,
+      ay: center + Math.sin(angle) * maxRadius,
+    };
   });
-  normalized.needs = Array.isArray(project.needs)
-    ? project.needs.map((item) => ({
-        title: String(item.title || ''),
-        importance: Number(item.importance) || 1,
-        satisfaction: Number(item.satisfaction) || 1,
-      }))
-    : [];
-  normalized.concepts = Array.isArray(project.concepts)
-    ? project.concepts.map((item) => ({
-        title: String(item.title || ''),
-        novelty: Number(item.novelty) || 1,
-        feasibility: Number(item.feasibility) || 1,
-        serviceQuality: Number(item.serviceQuality) || 1,
-        risk: Number(item.risk) || 1,
-      }))
-    : [];
-  normalized.feedback = Array.isArray(project.feedback) ? project.feedback : [];
-  return normalized;
+  const polygon = points.map((point) => `${point.x},${point.y}`).join(' ');
+  const axes = points.map((point) => `<line x1="${center}" y1="${center}" x2="${point.ax}" y2="${point.ay}" />`).join('');
+  const labelsMarkup = points.map((point) => `
+    <div class="radar-metric">
+      <span>${point.label}</span>
+      <b>${point.value}</b>
+    </div>
+  `).join('');
+  return `
+    <svg class="radar-svg" viewBox="0 0 192 192" role="img" aria-label="能力画像雷达图">
+      <circle cx="${center}" cy="${center}" r="70" />
+      <circle cx="${center}" cy="${center}" r="46" />
+      <circle cx="${center}" cy="${center}" r="23" />
+      ${axes}
+      <polygon points="${polygon}" />
+    </svg>
+    <div class="radar-metrics">${labelsMarkup}</div>
+  `;
 }
 
-function clampScore(value) {
-  return Math.max(0, Math.min(100, Math.round(value)));
+function getEvidenceType(title) {
+  const text = String(title || '');
+  if (text.includes('访谈')) return '访谈';
+  if (text.includes('观察') || text.includes('探险')) return '观察';
+  if (text.includes('画像')) return '画像';
+  if (text.includes('蓝图')) return '蓝图';
+  if (text.includes('测试')) return '测试';
+  return '证据';
+}
+
+function rankedConcepts() {
+  return rankByTopsis(activeProject().concepts, [
+    { key: 'novelty', weight: 0.25, direction: 'benefit' },
+    { key: 'feasibility', weight: 0.3, direction: 'benefit' },
+    { key: 'serviceQuality', weight: 0.3, direction: 'benefit' },
+    { key: 'risk', weight: 0.15, direction: 'cost' },
+  ]);
+}
+
+function activeGroup() {
+  return state.groups.find((group) => group.id === activeGroupId) || state.groups[0];
+}
+
+function activeProject() {
+  return activeGroup().project;
+}
+
+function activeStage() {
+  return STAGES.find((stage) => stage.id === activeStageId) || STAGES[0];
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleBackendSave();
+}
+
+async function loadBackendState() {
+  if (location.protocol === 'file:') return;
+  try {
+    const response = await apiFetch('./api/state', { cache: 'no-store' });
+    if (response.status === 401) {
+      showAuthGate('请先输入课堂访问口令。');
+      return;
+    }
+    if (!response.ok) return;
+    const result = validateClassroomState(await response.json());
+    if (!result.ok) return;
+    backendAvailable = true;
+    state = result.value;
+    activeGroupId = state.groups[0]?.id || activeGroupId;
+    activeStageId = 'empathy';
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    els.studentList.value = state.studentText;
+    render();
+  } catch {
+    backendAvailable = false;
+  }
+}
+
+function scheduleBackendSave() {
+  if (!backendAvailable || location.protocol === 'file:') return;
+  clearTimeout(backendSaveTimer);
+  backendSaveTimer = setTimeout(() => {
+    persistBackendState().catch(() => {
+      backendAvailable = false;
+    });
+  }, 450);
+}
+
+async function persistBackendState() {
+  const response = await apiFetch('./api/state', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(state),
+  });
+  if (response.status === 401) {
+    showAuthGate('访问口令已失效，请重新输入。');
+  }
+  if (!response.ok) throw new Error('backend save failed');
+}
+
+function apiFetch(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (sessionToken) {
+    headers.set('authorization', `Bearer ${sessionToken}`);
+  }
+  if (accessCode) {
+    headers.set('x-access-code', accessCode);
+  }
+  return fetch(url, { ...options, headers });
+}
+
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const result = validateClassroomState(saved);
+    if (result.ok) return result.value;
+  } catch {
+    // Fall through to reset corrupt local state.
+  }
+  localStorage.removeItem(STORAGE_KEY);
+  return createSampleState();
+}
+
+function loadModelSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MODEL_SETTINGS_KEY));
+    if (saved && typeof saved === 'object') return saved;
+  } catch {
+    localStorage.removeItem(MODEL_SETTINGS_KEY);
+  }
+  return { provider: 'deepseek', providers: {} };
+}
+
+function createSampleState() {
+  const groups = createGroups(parseStudentText(sampleStudentsText), 5);
+  seedProjects(groups);
+  return {
+    studentText: sampleStudentsText,
+    groups,
+  };
+}
+
+function seedProjects(groups) {
+  groups.forEach((group, index) => {
+    if (!group.project) return;
+    group.project.title = index === 0 ? '医院无忧导诊服务优化' : '校园共享学习空间服务优化';
+    group.project.scenario = index === 0
+      ? '围绕老年患者、陪诊家属、导诊员和医生之间的信息传递断点，优化从入院咨询到候诊就医的服务体验。'
+      : '围绕学生预约、自习、设备借用和空间秩序维护，优化校园学习空间的服务触点。';
+    group.project.stages.empathy.evidence = [
+      {
+        title: '深度访谈提纲',
+        content: '访谈老年患者、家属、导诊员，关注等待、指引、信息理解和情绪压力。',
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        title: '服务探险记录',
+        content: '记录入口、挂号、分诊、候诊、缴费等触点，标注拥堵与信息断点。',
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+    group.project.stages.define.evidence = [
+      {
+        title: '核心用户画像',
+        content: '主要用户为低数字熟练度的老年患者，关键陪同者为家属，服务协作者为导诊员。',
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+    group.project.needs = [
+      { title: '入口处快速理解就诊流程', importance: 5, satisfaction: 2 },
+      { title: '候诊状态可视化提醒', importance: 4, satisfaction: 3 },
+      { title: '家属远程同步进度', importance: 3, satisfaction: 2 },
+    ];
+    group.project.concepts = [
+      { title: '导诊触点重构方案', novelty: 4, feasibility: 4, serviceQuality: 5, risk: 2 },
+      { title: '候诊信息可视化屏', novelty: 3, feasibility: 5, serviceQuality: 4, risk: 1 },
+      { title: '陪诊小程序提醒', novelty: 4, feasibility: 3, serviceQuality: 4, risk: 3 },
+    ];
+  });
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+function formatDate(value) {
+  if (!value) return '未记录';
+  return new Date(value).toLocaleString('zh-CN', { hour12: false });
+}
+
+function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
+async function safeJson(response) {
+  try {
+    return await response.json();
+  } catch {
+    return { ok: false, error: '服务器返回内容无法解析，请刷新页面后重试。' };
+  }
 }
