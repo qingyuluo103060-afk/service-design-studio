@@ -20,6 +20,11 @@
   mapKeywordsToBubbles,
   parseStudentText,
   calculateTopsisAnalysis,
+  parseAhpMatrixCsv,
+  parseTopsisMatrixCsv,
+  parseCsvTable,
+  buildJourneyRows,
+  buildTrizRows,
   rankByTopsis,
   validateClassroomState,
 } from './app-core.mjs';
@@ -112,6 +117,17 @@ const els = {
   downloadKanoSurvey: document.querySelector('#downloadKanoSurvey'),
   analyzeKanoSurvey: document.querySelector('#analyzeKanoSurvey'),
   kanoSurveyResult: document.querySelector('#kanoSurveyResult'),
+  ahpMatrixText: document.querySelector('#ahpMatrixText'),
+  ahpNote: document.querySelector('#ahpNote'),
+  ahpMatrixFile: document.querySelector('#ahpMatrixFile'),
+  downloadAhpTemplate: document.querySelector('#downloadAhpTemplate'),
+  analyzeAhpMatrix: document.querySelector('#analyzeAhpMatrix'),
+  ahpMatrixResult: document.querySelector('#ahpMatrixResult'),
+  journeyTable: document.querySelector('#journeyTable'),
+  journeyMap: document.querySelector('#journeyMap'),
+  journeyFile: document.querySelector('#journeyFile'),
+  downloadJourneyTemplate: document.querySelector('#downloadJourneyTemplate'),
+  analyzeJourney: document.querySelector('#analyzeJourney'),
   sankeyChart: document.querySelector('#sankeyChart'),
   studentInsights: document.querySelector('#studentInsights'),
   teacherInsights: document.querySelector('#teacherInsights'),
@@ -171,6 +187,7 @@ const els = {
   researchAnalysisResult: document.querySelector('#researchAnalysisResult'),
   researchQuadrant: document.querySelector('#researchQuadrant'),
   interviewTranscript: document.querySelector('#interviewTranscript'),
+  interviewTranscriptFile: document.querySelector('#interviewTranscriptFile'),
   interviewMethod: document.querySelector('#interviewMethod'),
   interviewCodingPrompt: document.querySelector('#interviewCodingPrompt'),
   runInterviewCoding: document.querySelector('#runInterviewCoding'),
@@ -191,6 +208,15 @@ const els = {
   clearGroupRoles: document.querySelector('#clearGroupRoles'),
   roleBoard: document.querySelector('#roleBoard'),
   challengeBoard: document.querySelector('#challengeBoard'),
+  trizWorksheet: document.querySelector('#trizWorksheet'),
+  trizFile: document.querySelector('#trizFile'),
+  downloadTrizTemplate: document.querySelector('#downloadTrizTemplate'),
+  analyzeTriz: document.querySelector('#analyzeTriz'),
+  trizResult: document.querySelector('#trizResult'),
+  topsisMatrixFile: document.querySelector('#topsisMatrixFile'),
+  downloadTopsisTemplate: document.querySelector('#downloadTopsisTemplate'),
+  analyzeTopsisMatrix: document.querySelector('#analyzeTopsisMatrix'),
+  topsisMatrixResult: document.querySelector('#topsisMatrixResult'),
 };
 
 init();
@@ -389,11 +415,24 @@ function bindEvents() {
   });
   els.generateWithModel.addEventListener('click', generateModelAdvice);
   els.rawResearchFile?.addEventListener('change', () => readTextFileInto(els.rawResearchFile, els.rawResearchData));
+  els.interviewTranscriptFile?.addEventListener('change', () => readTextFileInto(els.interviewTranscriptFile, els.interviewTranscript));
   els.rubricFile?.addEventListener('change', () => readTextFileInto(els.rubricFile, els.rubricText));
   els.runResearchAnalysis?.addEventListener('click', runResearchAnalysis);
   els.runInterviewCoding?.addEventListener('click', runInterviewCoding);
   els.downloadKanoSurvey?.addEventListener('click', downloadKanoSurvey);
   els.analyzeKanoSurvey?.addEventListener('click', analyzeKanoSurvey);
+  els.downloadAhpTemplate?.addEventListener('click', downloadAhpTemplate);
+  els.ahpMatrixFile?.addEventListener('change', () => readTextFileInto(els.ahpMatrixFile, els.ahpMatrixText));
+  els.analyzeAhpMatrix?.addEventListener('click', analyzeAhpMatrix);
+  els.downloadJourneyTemplate?.addEventListener('click', downloadJourneyTemplate);
+  els.journeyFile?.addEventListener('change', importJourneyFile);
+  els.analyzeJourney?.addEventListener('click', analyzeJourney);
+  els.downloadTrizTemplate?.addEventListener('click', downloadTrizTemplate);
+  els.trizFile?.addEventListener('change', importTrizFile);
+  els.analyzeTriz?.addEventListener('click', analyzeTriz);
+  els.downloadTopsisTemplate?.addEventListener('click', downloadTopsisTemplate);
+  els.analyzeTopsisMatrix?.addEventListener('click', analyzeTopsisMatrix);
+  els.topsisMatrixFile?.addEventListener('change', analyzeTopsisMatrix);
   els.analyzeBlueprint?.addEventListener('click', () => openSmartAnalysis('blueprintTemplate'));
   els.generateProjectReport?.addEventListener('click', generateProjectReport);
   els.exportProjectPackage?.addEventListener('click', exportProjectPackage);
@@ -1312,6 +1351,10 @@ function renderVisuals() {
   renderPersonaBoard(project);
   renderKanoChart(project);
   renderKanoQuestionnaire(project);
+  renderAhpMatrixResult(project);
+  renderJourneyWorkspace(project);
+  renderTrizWorkspace(project);
+  renderTopsisMatrixResult(project);
   renderSankeyChart(project);
   renderBlueprintTemplate(project);
   renderStudentInsights(project);
@@ -1505,6 +1548,254 @@ async function analyzeKanoSurvey() {
       `).join('')}
     </div>
   `;
+}
+
+function downloadAhpTemplate() {
+  const needs = activeProject().needs.length ? activeProject().needs.slice(0, 4) : [
+    { title: '候诊提醒' },
+    { title: '导诊清晰' },
+    { title: '陪诊协同' },
+  ];
+  const labels = needs.map((need) => need.title);
+  const rows = [['需求', ...labels]];
+  labels.forEach((label, rowIndex) => {
+    rows.push([label, ...labels.map((_, colIndex) => (rowIndex === colIndex ? 1 : rowIndex < colIndex ? 3 : 0.333))]);
+  });
+  downloadText('ahp-pairwise-matrix-template.csv', rowsToCsv(rows), 'text/csv;charset=utf-8');
+}
+
+function analyzeAhpMatrix() {
+  const project = activeProject();
+  const source = els.ahpMatrixText?.value?.trim() || buildAhpTemplateText(project);
+  const parsed = parseAhpMatrixCsv(source);
+  const validRows = parsed.matrix.filter((row) => row.length === parsed.labels.length);
+  if (!parsed.labels.length || validRows.length !== parsed.labels.length) {
+    els.ahpMatrixResult.textContent = '矩阵格式不完整。请使用“下载 AHP 模板”生成 CSV，再按需求名称填写互反判断矩阵。';
+    return;
+  }
+  const analysis = calculateAhpConsistency(validRows);
+  project.ahpAnalysis = {
+    labels: parsed.labels,
+    matrix: validRows,
+    note: els.ahpNote?.value?.trim() || '',
+    ...analysis,
+    updatedAt: new Date().toISOString(),
+  };
+  saveState();
+  renderAhpMatrixResult(project);
+  renderLight();
+}
+
+function buildAhpTemplateText(project) {
+  const needs = project.needs.length ? project.needs.slice(0, 4) : [
+    { title: '候诊提醒', importance: 5, satisfaction: 2 },
+    { title: '导诊清晰', importance: 4, satisfaction: 2 },
+    { title: '陪诊协同', importance: 3, satisfaction: 3 },
+  ];
+  const priorities = needs.map((need) => Math.max(1, Number(need.importance || 1) * (6 - Number(need.satisfaction || 3))));
+  const rows = [['需求', ...needs.map((need) => need.title)]];
+  needs.forEach((need, rowIndex) => {
+    rows.push([need.title, ...needs.map((_, colIndex) => Number((priorities[rowIndex] / priorities[colIndex]).toFixed(3)))]);
+  });
+  return rowsToCsv(rows);
+}
+
+function renderAhpMatrixResult(project) {
+  if (!els.ahpMatrixResult) return;
+  const analysis = project.ahpAnalysis || (() => {
+    const parsed = parseAhpMatrixCsv(buildAhpTemplateText(project));
+    return { labels: parsed.labels, matrix: parsed.matrix, ...calculateAhpConsistency(parsed.matrix), note: '课堂演示矩阵，建议上传小组真实判断矩阵。' };
+  })();
+  els.ahpMatrixResult.innerHTML = `
+    <b>AHP 权重与一致性检验</b>
+    <div class="method-table ahp-output-table">
+      <span>指标</span><span>权重</span><span>排序</span>
+      ${analysis.labels.map((label, index) => `
+        <b>${escapeHtml(label)}</b><span>${Math.round((analysis.weights[index] || 0) * 1000) / 10}%</span><span>${index + 1}</span>
+      `).join('')}
+    </div>
+    <div class="analysis-badges">
+      <span>λmax ${analysis.lambdaMax}</span><span>CI ${analysis.ci}</span><span>CR ${analysis.cr}</span><span>${analysis.consistent ? '一致性通过' : '需要修正矩阵'}</span>
+    </div>
+    ${analysis.note ? `<p class="muted">${escapeHtml(analysis.note)}</p>` : ''}
+  `;
+}
+
+function downloadJourneyTemplate() {
+  const rows = [
+    ['stage', 'touchpoint', 'action', 'emotion', 'pain', 'opportunity', 'evidence'],
+    ['进入服务', '入口/页面', '寻找服务入口', 2, '入口不清晰', '入口聚合与分层导引', '访谈A-01'],
+    ['等待办理', '排队/通知', '等待叫号或反馈', 3, '等待不确定', '状态可视化与提醒', '观察记录B-02'],
+  ];
+  downloadText('journey-map-template.csv', rowsToCsv(rows), 'text/csv;charset=utf-8');
+}
+
+async function importJourneyFile() {
+  const file = els.journeyFile?.files?.[0];
+  if (!file) return;
+  const table = parseCsvTable(await file.text());
+  const index = csvHeaderIndex(table.headers);
+  activeProject().journey = table.rows.map((row) => ({
+    stage: row[index('stage', '阶段')] || '',
+    touchpoint: row[index('touchpoint', '触点')] || '',
+    action: row[index('action', '行为')] || '',
+    emotion: Number(row[index('emotion', '情绪')]) || 3,
+    pain: row[index('pain', '痛点')] || '',
+    opportunity: row[index('opportunity', '机会')] || '',
+    evidence: row[index('evidence', '证据')] || '',
+  })).filter((row) => row.stage || row.touchpoint || row.pain);
+  saveState();
+  render();
+}
+
+async function analyzeJourney() {
+  const project = activeProject();
+  if (!project.journey?.length) project.journey = buildJourneyRows(project);
+  saveState();
+  renderJourneyWorkspace(project);
+  try {
+    const aiText = await requestModelText(`请根据以下用户旅程图数据，分析阶段断点、情绪变化、关键痛点和可进入服务蓝图的机会点。必须按“阶段-触点-痛点-机会-证据”输出。\n${JSON.stringify(project.journey)}`);
+    els.journeyTable.insertAdjacentHTML('beforeend', `<div class="model-result"><b>智能分析</b>\n${escapeHtml(aiText)}</div>`);
+  } catch {
+    // Local journey rows remain visible.
+  }
+}
+
+function renderJourneyWorkspace(project) {
+  if (!els.journeyMap || !els.journeyTable) return;
+  const rows = buildJourneyRows(project);
+  els.journeyTable.innerHTML = `
+    <div class="method-table journey-output-table">
+      <span>阶段</span><span>触点</span><span>用户行为</span><span>情绪</span><span>痛点</span><span>机会点</span><span>证据</span>
+      ${rows.map((row) => `
+        <b>${escapeHtml(row.stage)}</b><span>${escapeHtml(row.touchpoint)}</span><span>${escapeHtml(row.action)}</span>
+        <span>${escapeHtml(row.emotion)}</span><span>${escapeHtml(row.pain)}</span><span>${escapeHtml(row.opportunity)}</span><span>${escapeHtml(row.evidence)}</span>
+      `).join('')}
+    </div>
+  `;
+  els.journeyMap.innerHTML = `
+    <div class="journey-line"></div>
+    ${rows.map((row, index) => {
+      const emotion = Math.max(1, Math.min(5, Number(row.emotion) || 3));
+      return `<article class="journey-step" style="--i:${index};--emotion:${emotion}">
+        <span>${index + 1}</span>
+        <h3>${escapeHtml(row.stage)}</h3>
+        <b>${escapeHtml(row.touchpoint)}</b>
+        <p>${escapeHtml(row.action)}</p>
+        <em>情绪 ${emotion}/5</em>
+        <small>痛点：${escapeHtml(row.pain)}</small>
+        <small>机会：${escapeHtml(row.opportunity)}</small>
+      </article>`;
+    }).join('')}
+  `;
+}
+
+function downloadTrizTemplate() {
+  const rows = [['need', 'improve', 'worsen', 'principle', 'concept', 'evidence']];
+  buildTrizRows(activeProject()).forEach((row) => rows.push([row.need, row.improve, row.worsen, row.principle, row.concept, row.evidence]));
+  downloadText('triz-worksheet-template.csv', rowsToCsv(rows), 'text/csv;charset=utf-8');
+}
+
+async function importTrizFile() {
+  const file = els.trizFile?.files?.[0];
+  if (!file) return;
+  const table = parseCsvTable(await file.text());
+  const index = csvHeaderIndex(table.headers);
+  activeProject().triz = table.rows.map((row) => ({
+    need: row[index('need', '需求')] || '',
+    improve: row[index('improve', '改善')] || '',
+    worsen: row[index('worsen', '恶化')] || '',
+    principle: row[index('principle', '原理')] || '',
+    concept: row[index('concept', '方案')] || '',
+    evidence: row[index('evidence', '证据')] || '',
+  })).filter((row) => row.need || row.concept);
+  saveState();
+  render();
+}
+
+async function analyzeTriz() {
+  const project = activeProject();
+  project.triz = buildTrizRows(project);
+  project.triz.forEach((row) => {
+    if (!project.concepts.some((concept) => concept.title === row.concept)) {
+      project.concepts.push({ title: row.concept, novelty: 4, feasibility: 3, serviceQuality: 4, risk: 2 });
+    }
+  });
+  saveState();
+  renderTrizWorkspace(project);
+  renderConcepts();
+  renderLight();
+  try {
+    const aiText = await requestModelText(`请严格按照 TRIZ 服务创新过程，复核以下矛盾表，补充可执行方案卡。字段包括：关键需求、改善目标、恶化风险、发明原理、服务触点转译、证据链。\n${JSON.stringify(project.triz)}`);
+    els.trizResult.innerHTML = `<b>智能 TRIZ 分析</b>\n${escapeHtml(aiText)}`;
+  } catch {
+    els.trizResult.textContent = '已根据关键需求生成 TRIZ 矛盾表和方案卡。可配置个人 API Key 后获得更细致的原理匹配说明。';
+  }
+}
+
+function renderTrizWorkspace(project) {
+  if (!els.trizWorksheet) return;
+  const rows = buildTrizRows(project);
+  els.trizWorksheet.innerHTML = `
+    <div class="method-table triz-output-table">
+      <span>关键需求</span><span>改善目标</span><span>恶化风险</span><span>TRIZ 原理</span><span>方案转译</span><span>证据</span>
+      ${rows.map((row) => `
+        <b>${escapeHtml(row.need)}</b><span>${escapeHtml(row.improve)}</span><span>${escapeHtml(row.worsen)}</span>
+        <span>${escapeHtml(row.principle)}</span><span>${escapeHtml(row.concept)}</span><span>${escapeHtml(row.evidence)}</span>
+      `).join('')}
+    </div>
+  `;
+}
+
+function downloadTopsisTemplate() {
+  const rows = [['方案', '创新性', '可行性', '服务质量', '风险']];
+  const concepts = activeProject().concepts.length ? activeProject().concepts : [
+    { title: '候诊信息可视化屏', novelty: 4, feasibility: 4, serviceQuality: 5, risk: 2 },
+    { title: '导诊触点重构方案', novelty: 5, feasibility: 3, serviceQuality: 4, risk: 3 },
+  ];
+  concepts.forEach((item) => rows.push([item.title, item.novelty, item.feasibility, item.serviceQuality, item.risk]));
+  downloadText('topsis-decision-matrix-template.csv', rowsToCsv(rows), 'text/csv;charset=utf-8');
+}
+
+async function analyzeTopsisMatrix() {
+  const file = els.topsisMatrixFile?.files?.[0];
+  const project = activeProject();
+  const parsed = file ? parseTopsisMatrixCsv(await file.text()) : { items: project.concepts, criteria: topsisCriteria() };
+  if (!parsed.items.length || !parsed.criteria.length) {
+    els.topsisMatrixResult.textContent = '未识别到方案评价矩阵。请上传包含“方案,创新性,可行性,服务质量,风险”的 CSV。';
+    return;
+  }
+  const analysis = calculateTopsisAnalysis(parsed.items, parsed.criteria);
+  project.topsisAnalysis = { ...analysis, criteria: parsed.criteria, updatedAt: new Date().toISOString() };
+  saveState();
+  renderTopsisMatrixResult(project);
+  renderLight();
+}
+
+function renderTopsisMatrixResult(project) {
+  if (!els.topsisMatrixResult) return;
+  const analysis = project.topsisAnalysis || calculateTopsisAnalysis(project.concepts, topsisCriteria());
+  if (!analysis.ranked?.length) {
+    els.topsisMatrixResult.textContent = '添加方案或上传 TOPSIS 矩阵后显示排序、理想解距离和贴近度。';
+    return;
+  }
+  els.topsisMatrixResult.innerHTML = `
+    <b>TOPSIS 过程结果</b>
+    <div class="method-table topsis-output-table">
+      <span>排名</span><span>方案</span><span>贴近度 C</span><span>D+</span><span>D-</span>
+      ${analysis.ranked.map((item, index) => `
+        <b>${index + 1}</b><b>${escapeHtml(item.title)}</b><span>${item.score}</span><span>${item.bestDistance}</span><span>${item.worstDistance}</span>
+      `).join('')}
+    </div>
+    <p class="muted">正理想解：${Object.entries(analysis.idealBest || {}).map(([key, value]) => `${key}=${Number(value).toFixed(3)}`).join('；')}；负理想解：${Object.entries(analysis.idealWorst || {}).map(([key, value]) => `${key}=${Number(value).toFixed(3)}`).join('；')}</p>
+  `;
+}
+
+function csvHeaderIndex(headers = []) {
+  return (...names) => {
+    const hit = headers.findIndex((header) => names.some((name) => String(header).toLowerCase().includes(String(name).toLowerCase())));
+    return hit >= 0 ? hit : 0;
+  };
 }
 
 function renderSankeyChart(project) {
@@ -1825,6 +2116,8 @@ async function runInterviewCoding() {
   const local = method === 'grounded'
     ? buildGroundedTheoryAnalysis(text, prompt)
     : buildThematicAnalysis(text, prompt);
+  activeProject().codingAnalysis = { ...local, updatedAt: new Date().toISOString() };
+  saveState();
   els.interviewCodingResult.innerHTML = renderCodingResult(local);
   try {
     const aiText = await requestModelText(`${local.method}。请严格按照以下步骤复核并补充分析，不要跳步：${local.steps.join('、')}。\n研究问题：${prompt}\n访谈材料：\n${text.slice(0, 6000)}`);
@@ -1940,7 +2233,7 @@ function buildLocalAnalysis(vizId, project, rawText = '') {
     `主要关键词：${keywords.map((item) => `${item.word}(${item.count})`).join('、') || '暂无'}`,
   ];
   if (vizId === 'rankChart') {
-    const topsis = calculateTopsisAnalysis(project.concepts, topsisCriteria());
+    const topsis = project.topsisAnalysis?.ranked?.length ? project.topsisAnalysis : calculateTopsisAnalysis(project.concepts, topsisCriteria());
     base.push(`TOPSIS 当前优先方案为「${topConcept}」，建议核查评分依据是否来自真实调研证据。`);
     topsis.ranked.slice(0, 5).forEach((item, index) => {
       base.push(`${index + 1}. ${item.title}：贴近度 ${item.score}，正理想距离 ${item.bestDistance}，负理想距离 ${item.worstDistance}`);
@@ -1948,6 +2241,7 @@ function buildLocalAnalysis(vizId, project, rawText = '') {
   }
   if (vizId === 'kanoChart') base.push('Kano 图应重点关注“重要度高、满意度低”的需求，把它们转入方案构思和测试验证。');
   if (vizId === 'stakeholderMap') base.push('利益相关者需要从角色名称推进到责任、触点、利益冲突和协同关系。');
+  if (vizId === 'journeyMap') base.push('用户旅程图应重点检查低情绪阶段，将痛点和机会点转入服务蓝图的失败点与前后台触点。');
   if (vizId === 'blueprintTemplate' || vizId === 'sankeyChart') base.push('服务蓝图应补齐用户行为、前台触点、后台支持、实体证据和失败点。');
   if (vizId === 'researchQuadrant') base.push('四象限坐标可用于区分优先突破、保持优化、继续观察和低优暂缓。');
   base.push('下一步：补充可追溯原始材料，并将分析结论同步到需求筛选、方案排序和测试评估中。');
@@ -2030,10 +2324,11 @@ function buildProjectReport(project) {
     `四、文献推荐与研究空白：${project.literatureReview?.result || '待补充。建议先完成一键文献推荐，再提炼研究空白。'}`,
     `五、调研方法与原始证据：共记录 ${STAGES.reduce((sum, stage) => sum + (project.stages[stage.id]?.evidence?.length || 0), 0)} 条过程证据。`,
     `六、访谈/问卷分析：建议按主题分析或扎根理论呈现编码过程，并说明需求如何从原始材料中产生。`,
-    `七、用户画像与利益相关者：围绕目标用户、陪伴者、一线服务、管理者和平台/设备建立关系图。`,
-    `八、需求筛选：已记录 ${project.needs.length} 条需求，应结合 Kano 分类和 AHP 权重解释优先级。`,
-    `九、TRIZ 方案生成：已记录 ${project.concepts.length} 个方案，应说明服务矛盾、创新原理和需求证据链。`,
-    `十、TOPSIS 方案筛选与服务蓝图：当前优先方案为 ${ranked[0]?.title || '待补充'}，建议按用户行为、前台触点、后台支持、实体证据和失败点展开蓝图。`,
+    project.codingAnalysis ? `访谈分析过程：${project.codingAnalysis.method}；步骤：${project.codingAnalysis.steps.join(' → ')}；主题/范畴：${project.codingAnalysis.themes.map((item) => item.theme).join('、')}` : '',
+    `七、用户画像、利益相关者与用户旅程：围绕目标用户、陪伴者、一线服务、管理者和平台/设备建立关系图；旅程阶段包括 ${buildJourneyRows(project).map((row) => row.stage).join('、')}。`,
+    `八、需求筛选：已记录 ${project.needs.length} 条需求，应结合 Kano 分类和 AHP 权重解释优先级。${project.ahpAnalysis ? `当前 AHP CR=${project.ahpAnalysis.cr}，${project.ahpAnalysis.consistent ? '一致性通过' : '需修正矩阵'}。` : ''}`,
+    `九、TRIZ 方案生成：已记录 ${project.concepts.length} 个方案，TRIZ 矛盾表 ${buildTrizRows(project).length} 条，应说明服务矛盾、创新原理和需求证据链。`,
+    `十、TOPSIS 方案筛选与服务蓝图：当前优先方案为 ${ranked[0]?.title || '待补充'}，建议按用户行为、前台触点、后台支持、实体证据和失败点展开蓝图。${project.topsisAnalysis?.ranked?.length ? `TOPSIS 已输出 ${project.topsisAnalysis.ranked.length} 个方案贴近度。` : ''}`,
     `十一、测试与评估：当前整体闭环进度 ${progress.overall}%，需结合 SERVQUAL/TOPSIS 说明验证结果。`,
     `十二、关键词摘要：${keywords.map((item) => `${item.word}(${item.count})`).join('、') || '待补充'}`,
     `十三、反思与迭代：说明本轮设计的局限、数据不足和下一轮改进计划。`,
@@ -2061,7 +2356,9 @@ function enhanceVisualCards() {
     ['competencyRadar', '能力画像雷达图'],
     ['flowFunnel', '证据到方案漏斗图'],
     ['stakeholderMap', '利益相关者地图'],
+    ['journeyMap', '用户旅程图'],
     ['kanoChart', 'Kano 需求分类图'],
+    ['journeyMap', '用户旅程图'],
     ['rankChart', 'TOPSIS 方案排序图'],
     ['sankeyChart', '数据闭环桑基图'],
     ['researchQuadrant', '调研四象限图'],
@@ -2289,6 +2586,10 @@ function projectToCsv(project) {
   });
   project.needs.forEach((item) => rows.push(['need', '', item.title, item.importance, item.satisfaction, '']));
   project.concepts.forEach((item) => rows.push(['concept', '', item.title, item.feasibility, item.serviceQuality, `novelty=${item.novelty};risk=${item.risk}`]));
+  buildJourneyRows(project).forEach((item) => rows.push(['journey', item.stage, item.touchpoint, item.emotion, item.pain, `action=${item.action};opportunity=${item.opportunity};evidence=${item.evidence}`]));
+  buildTrizRows(project).forEach((item) => rows.push(['triz', '', item.need, item.improve, item.worsen, `principle=${item.principle};concept=${item.concept};evidence=${item.evidence}`]));
+  (project.ahpAnalysis?.labels || []).forEach((label, index) => rows.push(['ahp', '', label, project.ahpAnalysis.weights?.[index] || '', project.ahpAnalysis.cr || '', project.ahpAnalysis.consistent ? 'consistent' : 'revise']));
+  (project.topsisAnalysis?.ranked || []).forEach((item, index) => rows.push(['topsis', '', item.title, item.score, index + 1, `D+=${item.bestDistance};D-=${item.worstDistance}`]));
   return rowsToCsv(rows);
 }
 
@@ -2439,7 +2740,8 @@ function getEvidenceType(title) {
 }
 
 function rankedConcepts() {
-  return rankByTopsis(activeProject().concepts, topsisCriteria());
+  const project = activeProject();
+  return project.topsisAnalysis?.ranked?.length ? project.topsisAnalysis.ranked : rankByTopsis(project.concepts, topsisCriteria());
 }
 
 function topsisCriteria() {
