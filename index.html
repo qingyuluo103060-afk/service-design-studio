@@ -7,7 +7,7 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260823-method-v8" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260823-method-v9" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
@@ -127,6 +127,7 @@
               <article class="stat-card risk-stat"><span id="dashboardRisk">待诊断</span><small>课堂风险</small></article>
             </div>
           </section>
+          <section id="currentMethodPanel" class="panel current-method-panel"></section>
 
           <section id="module-overview" class="workspace-module active">
             <div class="module-title-row"><div><p class="eyebrow">Dashboard</p><h2>项目总览</h2></div><span class="status-chip">数据闭环</span></div>
@@ -137,6 +138,7 @@
               </div>
               <p class="muted">按“选题、文献支撑、调研、编码分析、Kano-AHP、TRIZ、TOPSIS蓝图、测试报告”的顺序推进，避免先方案后调研。</p>
               <div id="methodTaskBoard" class="method-task-board"></div>
+              <div id="methodProcessBoard" class="method-process-board"></div>
             </section>
             <section class="panel export-hub">
               <div class="panel-title">
@@ -358,6 +360,6 @@
         <div id="vizModalBody" class="viz-modal-body"></div>
       </div>
     </section>
-    <script type="module" src="./src/app.js?v=20260823-method-v8"></script>
+    <script type="module" src="./src/app.js?v=20260823-method-v9"></script>
   </body>
 </html>
