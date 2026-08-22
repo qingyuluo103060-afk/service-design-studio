@@ -11,11 +11,19 @@
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
+      <div class="auth-orbits" aria-hidden="true">
+        <i></i><i></i><i></i>
+      </div>
       <div class="welcome-panel">
         <span class="brand-mark">SD</span>
         <p class="eyebrow">Service Design Studio</p>
         <h1>服务设计智慧课程工作台</h1>
         <p>围绕“三阶双融、五环赋能、三域协同、数据闭环”，把选题、调研、画像、需求、方案、蓝图、测试与 AI 反馈整合到同一个课堂流程中。</p>
+        <div class="welcome-snapshot" aria-label="课程数据预览">
+          <article><strong>3</strong><span>教学阶段</span></article>
+          <article><strong>5</strong><span>赋能环节</span></article>
+          <article><strong>∞</strong><span>数据闭环</span></article>
+        </div>
         <div class="welcome-flow">
           <span>探</span><b>选题调研</b>
           <span>像</span><b>用户画像</b>
@@ -102,6 +110,13 @@
               <p class="eyebrow" id="activeStageLabel">探索与共情</p>
               <h2 id="activeProjectTitle">项目工作区</h2>
               <p class="hero-copy">左侧选择课程模块，右侧完成输入、查看图表与生成 AI 建议。</p>
+            </div>
+            <div class="hero-map" aria-hidden="true">
+              <span class="map-node n1">探</span>
+              <span class="map-node n2">像</span>
+              <span class="map-node n3">筛</span>
+              <span class="map-node n4">案</span>
+              <span class="map-node n5">评</span>
             </div>
             <div class="hero-stats">
               <article class="stat-card primary-stat"><span id="overallProgress">0%</span><small>总体闭环进度</small></article>
@@ -203,8 +218,31 @@
             </section>
           </section>
         </section>
+
+        <aside class="insight-rail" aria-label="课堂洞察">
+          <section class="insight-panel live-panel">
+            <p class="eyebrow">Live Insight</p>
+            <h2 id="liveModuleTitle">项目总览</h2>
+            <div id="liveCourseMap" class="live-course-map"></div>
+          </section>
+          <section class="insight-panel">
+            <p class="eyebrow">Next Action</p>
+            <h3>下一步建议</h3>
+            <p id="liveNextStep" class="rail-copy">选择左侧模块后，这里会显示当前阶段最需要推进的动作。</p>
+          </section>
+          <section class="insight-panel ai-rail-card">
+            <p class="eyebrow">AI Connector</p>
+            <h3>个人模型接入</h3>
+            <p id="liveAiCue" class="rail-copy">学生和教师可在 AI 模型设置中填写自己的 API Key。</p>
+          </section>
+          <section id="liveTeacherPanel" class="insight-panel teacher-only">
+            <p class="eyebrow">Teacher View</p>
+            <h3>课堂监测</h3>
+            <div id="liveTeacherMini"></div>
+          </section>
+        </aside>
       </main>
     </div>
-    <script type="module" src="./src/app.js?v=20260822-workspace"></script>
+    <script type="module" src="./src/app.js?v=20260822-visual-refresh"></script>
   </body>
 </html>

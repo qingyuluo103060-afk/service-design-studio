@@ -88,6 +88,11 @@ const els = {
   studentInsights: document.querySelector('#studentInsights'),
   teacherInsights: document.querySelector('#teacherInsights'),
   assistantAdvice: document.querySelector('#assistantAdvice'),
+  liveModuleTitle: document.querySelector('#liveModuleTitle'),
+  liveCourseMap: document.querySelector('#liveCourseMap'),
+  liveNextStep: document.querySelector('#liveNextStep'),
+  liveAiCue: document.querySelector('#liveAiCue'),
+  liveTeacherMini: document.querySelector('#liveTeacherMini'),
   importData: document.querySelector('#importData'),
   importFile: document.querySelector('#importFile'),
   exportData: document.querySelector('#exportData'),
@@ -774,6 +779,7 @@ function buildAvatarText(name) {
 function renderLight() {
   renderHeader();
   renderVisuals();
+  renderLiveRail();
   renderAssistant();
 }
 
@@ -1036,6 +1042,81 @@ function renderTeacherInsights() {
     <div class="visual-card"><h3>课堂平均进度</h3><div class="big-number">${average}%</div><p class="muted">用于判断是否需要集中讲解或分组辅导。</p></div>
     <div class="visual-card"><h3>数据流桑基概览</h3><div class="sankey-chart compact">${groupStats.map((group) => `<div class="sankey-step"><span>${escapeHtml(group.name)}</span><b>${group.needs + group.concepts}</b></div>`).join('<i class="sankey-link"></i>')}</div></div>
   `;
+}
+
+function renderLiveRail() {
+  if (!els.liveCourseMap) return;
+  const project = activeProject();
+  const progress = calculateStageProgress(project);
+  const module = COURSE_MODULES.find((item) => item.id === activeModuleId) || COURSE_MODULES[0];
+  const evidenceCount = STAGES.reduce(
+    (sum, stage) => sum + (project.stages[stage.id]?.evidence?.length || 0),
+    0,
+  );
+  const ranked = rankedConcepts();
+  const risk = getRiskStatus(progress.overall);
+
+  els.liveModuleTitle.textContent = module.title;
+  els.liveCourseMap.innerHTML = STAGES.map((stage) => `
+    <div class="live-step">
+      <span class="live-dot">${escapeHtml(stage.shortTitle)}</span>
+      <span class="live-track"><span class="live-fill" style="width:${progress[stage.id]}%"></span></span>
+      <b>${progress[stage.id]}%</b>
+    </div>
+  `).join('');
+
+  const nextStep = buildNextStepAdvice(module.id, project, progress, risk);
+  els.liveNextStep.textContent = nextStep;
+  els.liveAiCue.textContent = modelSettings.providers?.[modelSettings.provider]?.apiKey
+    ? '个人 API Key 已保存，可在当前项目材料基础上生成阶段化建议。'
+    : '请在“AI 模型设置”中保存个人 API Key，再生成访谈、Kano、TRIZ 或测试建议。';
+
+  if (els.liveTeacherMini) {
+    const average = Math.round(state.groups.reduce((sum, group) => (
+      sum + calculateStageProgress(group.project).overall
+    ), 0) / (state.groups.length || 1));
+    els.liveTeacherMini.innerHTML = [
+      ['当前小组', activeGroup().name],
+      ['全班小组', `${state.groups.length} 组`],
+      ['平均进度', `${average}%`],
+      ['证据总数', `${evidenceCount} 条`],
+      ['优先方案', ranked[0]?.title || '暂无方案'],
+    ].map(([label, value]) => `
+      <div class="teacher-mini-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>
+    `).join('');
+  }
+}
+
+function buildNextStepAdvice(moduleId, project, progress, risk) {
+  const stageEvidence = project.stages[activeStageId]?.evidence?.length || 0;
+  if (moduleId === 'research' && stageEvidence < 3) {
+    return '当前调研证据还偏少，建议补充访谈、观察或问卷材料，并把原话整理成可追溯证据。';
+  }
+  if (moduleId === 'persona') {
+    return '把调研证据转成一类核心用户画像，再标出目标用户、协作者、管理者和平台资源之间的关系。';
+  }
+  if (moduleId === 'needs' && project.needs.length < 4) {
+    return '建议先扩展需求条目，再用重要度和满意度做 Kano 初筛，避免过早锁定单一方案。';
+  }
+  if (moduleId === 'concepts' && project.concepts.length < 3) {
+    return '用 TRIZ 或触点重构至少提出 3 个方案，再用 TOPSIS 比较创新、可行、质量和风险。';
+  }
+  if (moduleId === 'blueprint') {
+    return '把最佳方案拆成前台行为、后台支持、触点证据和失败点，形成可展示的服务蓝图。';
+  }
+  if (moduleId === 'testing') {
+    return '围绕 SERVQUAL 五个维度记录测试反馈，并把修改依据回连到需求和方案。';
+  }
+  if (moduleId === 'teacher-dashboard') {
+    return '优先关注进度低于 60% 或证据链断裂的小组，课堂巡回时直接查看其阶段材料。';
+  }
+  if (moduleId === 'ai-settings') {
+    return '接入个人模型后，可以让 AI 生成下一轮访谈提纲、需求筛选理由或测试评价问题。';
+  }
+  if (progress.overall < 70) {
+    return risk.suggestion;
+  }
+  return '项目已经形成基础闭环，下一步应加强测试反馈、成果可视化和最终表达质量。';
 }
 
 function renderAssistant() {
