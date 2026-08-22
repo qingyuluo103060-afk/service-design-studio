@@ -7,5 +7,8 @@
     "start": "node server.mjs",
     "test": "node tests/app-core.test.mjs && node tests/server.test.mjs && node tests/public-api.test.mjs && node tests/account-auth.test.mjs",
     "check": "node --check src/app.js && node --check server.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
   }
 }
