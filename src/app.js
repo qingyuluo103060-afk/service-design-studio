@@ -1,6 +1,8 @@
 ﻿import {
   STAGES,
+  analyzeKanoResponses,
   buildAssistantAdvice,
+  calculateAhpConsistency,
   calculateCompetencyProfile,
   calculateStageProgress,
   classifyKano,
@@ -16,6 +18,7 @@
   getStageToolkit,
   mapKeywordsToBubbles,
   parseStudentText,
+  calculateTopsisAnalysis,
   rankByTopsis,
   validateClassroomState,
 } from './app-core.mjs';
@@ -394,6 +397,7 @@ function bindEvents() {
   els.printProjectPdf?.addEventListener('click', printProjectPdf);
   els.runSmartScore?.addEventListener('click', runSmartScore);
   els.exportGradebook?.addEventListener('click', exportGradebook);
+  els.gradingTable?.addEventListener('input', updateGradebookRecord);
   els.randomAssignRoles?.addEventListener('click', randomAssignRoles);
   els.clearGroupRoles?.addEventListener('click', clearGroupRoles);
   els.roleBoard?.addEventListener('input', updateGroupRole);
@@ -1024,13 +1028,25 @@ async function recommendLiterature() {
     return;
   }
   els.recommendLiterature.disabled = true;
-  els.literatureResult.textContent = '正在生成文献检索关键词、研究方向和研究空白分析...';
-  const prompt = buildLiteraturePrompt(project);
+  els.literatureResult.textContent = '正在检索 OpenAlex / Crossref 公开文献题录，并准备研究空白分析...';
+  let literatureItems = [];
+  try {
+    const response = await apiFetch('./api/literature/search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query, limit: 6 }),
+    });
+    const result = await safeJson(response);
+    if (response.ok && result.ok) literatureItems = result.items || [];
+  } catch {
+    literatureItems = [];
+  }
+  const prompt = buildLiteraturePrompt(project, literatureItems);
   try {
     const aiText = await requestModelText(prompt);
-    saveLiteratureResult(project, query, aiText);
+    saveLiteratureResult(project, query, `${formatLiteratureItems(literatureItems)}\n\n研究空白分析：\n${aiText}`, literatureItems);
   } catch (error) {
-    saveLiteratureResult(project, query, `${buildLocalLiteratureReview(project)}\n\n未能调用个人大模型，已生成本地文献分析模板。原因：${error.message}`);
+    saveLiteratureResult(project, query, `${formatLiteratureItems(literatureItems)}\n\n${buildLocalLiteratureReview(project, literatureItems)}\n\n未能调用个人大模型，已生成本地文献分析模板。原因：${error.message}`, literatureItems);
   } finally {
     els.recommendLiterature.disabled = false;
     saveState();
@@ -1038,10 +1054,11 @@ async function recommendLiterature() {
   }
 }
 
-function saveLiteratureResult(project, query, result) {
+function saveLiteratureResult(project, query, result, items = []) {
   project.literatureReview = {
     query,
     result,
+    items,
     updatedAt: new Date().toISOString(),
   };
   project.taskStatus = project.taskStatus || {};
@@ -1052,12 +1069,18 @@ function saveLiteratureResult(project, query, result) {
   };
 }
 
-function buildLiteraturePrompt(project) {
+function buildLiteraturePrompt(project, items = []) {
+  const references = items.length
+    ? items.map((item, index) => `${index + 1}. ${item.title} (${item.year || 'n.d.'}) ${item.authors || ''} ${item.venue || ''} DOI:${item.doi || '无'} 引用:${item.citedBy || 0}`).join('\n')
+    : '未检索到可用题录，请基于关键词给出检索策略，且不要编造具体文献。';
   return [
     '你是服务设计课程的研究助教。请围绕学生选题生成文献检索与研究空白分析，必须服务于后续调研、Kano-AHP、TRIZ、TOPSIS和服务蓝图，不要直接替学生给最终方案。',
     '',
     `项目主题：${project.title}`,
     `真实服务场景：${project.scenario}`,
+    '',
+    '已检索到的公开题录：',
+    references,
     '',
     '请输出：',
     '1. 中文与英文检索关键词各8-12个。',
@@ -1069,17 +1092,28 @@ function buildLiteraturePrompt(project) {
   ].join('\n');
 }
 
-function buildLocalLiteratureReview(project) {
+function buildLocalLiteratureReview(project, items = []) {
   const keywords = extractKeywords(`${project.title} ${project.scenario}`).slice(0, 8).map((item) => item.word);
   const base = keywords.length ? keywords.join('、') : '服务触点、用户体验、服务质量、需求分类、方案评价';
   return [
     '文献推荐与研究空白分析',
     '',
     `检索关键词建议：${base}、service design、user experience、service blueprint、Kano model、AHP、TRIZ、TOPSIS。`,
+    `真实检索题录数量：${items.length}。推荐继续补充 CNKI、Web of Science 或 Google Scholar 的课堂人工复核。`,
     '推荐检索方向：服务设计流程、目标用户体验痛点、服务质量评价、需求分类与权重、创新方案生成、方案多准则评价。',
     '可能研究空白：现有研究常停留在体验问题描述或单一方法应用，本项目可强调“调研证据-需求分类-权重排序-创新方案-方案评价-服务蓝图”的闭环。',
     '后续调研问题：目标用户在关键触点遇到什么障碍？哪些需求是基本型、期望型或魅力型？哪些服务矛盾阻碍体验提升？用户如何评价备选方案？',
     '方法链接入：先用调研材料提取需求，再用 Kano 分类和 AHP 权重筛选关键需求，用 TRIZ 转化为方案，最后用 TOPSIS 排序并沉淀服务蓝图。',
+  ].join('\n');
+}
+
+function formatLiteratureItems(items = []) {
+  if (!items.length) return '公开文献题录：暂未检索到稳定结果。';
+  return [
+    '公开文献题录：',
+    ...items.slice(0, 10).map((item, index) =>
+      `${index + 1}. ${item.title}（${item.year || 'n.d.'}，${item.source}，引用 ${item.citedBy || 0}）\n   作者：${item.authors || '未记录'}；来源：${item.venue || '未记录'}；DOI：${item.doi || '未记录'}`,
+    ),
   ].join('\n');
 }
 
@@ -1276,11 +1310,27 @@ function renderKanoChart(project) {
     els.kanoChart.innerHTML = '<p class="muted">添加需求后显示 Kano 分类。</p>';
     return;
   }
-  els.kanoChart.innerHTML = project.needs.map((need) => {
+  const points = project.needs.map((need) => {
     const x = Math.max(6, Math.min(94, Number(need.satisfaction) * 18));
     const y = Math.max(6, Math.min(94, 100 - Number(need.importance) * 18));
     return `<span class="kano-point" style="left:${x}%;top:${y}%;" title="${escapeHtml(need.title)}">${escapeHtml(need.title.slice(0, 2))}</span>`;
-  }).join('') + '<span class="kano-axis x">满意度</span><span class="kano-axis y">重要度</span>';
+  }).join('');
+  const ahp = buildNeedAhpAnalysis(project.needs);
+  const weights = ahp.weights.map((weight, index) => `<small>${escapeHtml(project.needs[index]?.title || `需求${index + 1}`)}：${Math.round(weight * 100)}%</small>`).join('');
+  els.kanoChart.innerHTML = `
+    ${points}<span class="kano-axis x">满意度</span><span class="kano-axis y">重要度</span>
+    <div class="ahp-summary">
+      <b>AHP 权重与一致性</b>
+      <span>CR=${ahp.cr} · ${ahp.consistent ? '一致性可接受' : '需重新判断矩阵'}</span>
+      <div>${weights}</div>
+    </div>
+  `;
+}
+
+function buildNeedAhpAnalysis(needs) {
+  const priorities = needs.map((need) => Math.max(1, Number(need.importance || 1) * (6 - Number(need.satisfaction || 3))));
+  const matrix = priorities.map((rowValue) => priorities.map((colValue) => rowValue / (colValue || 1)));
+  return calculateAhpConsistency(matrix);
 }
 
 function renderPersonaBoard(project) {
@@ -1355,17 +1405,37 @@ async function analyzeKanoSurvey() {
   }
   const text = await file.text();
   const lines = text.split(/\r?\n/).filter(Boolean);
-  const counts = new Map();
-  lines.slice(1).forEach((line) => {
-    const cells = parseCsvLine(line);
-    const need = cells[1] || cells[0] || '未命名需求';
-    counts.set(need, (counts.get(need) || 0) + 1);
-  });
-  els.kanoSurveyResult.textContent = [
-    `已读取 ${Math.max(0, lines.length - 1)} 条问卷记录。`,
-    '分类建议：',
-    ...[...counts.entries()].map(([need, count]) => `${need}：样本 ${count}，建议结合正反向答案矩阵复核 Kano 类型。`),
-  ].join('\n');
+  const headers = parseCsvLine(lines[0] || '').map((cell) => cell.trim().toLowerCase());
+  const rows = lines.slice(1).map((line) => parseCsvLine(line));
+  const findIndex = (...names) => headers.findIndex((header) => names.some((name) => header.includes(name)));
+  const needIndex = findIndex('need', '需求');
+  const functionalIndex = findIndex('functional', '正向');
+  const dysfunctionalIndex = findIndex('dysfunctional', '反向');
+  const responses = rows
+    .map((cells) => ({
+      need: cells[needIndex >= 0 ? needIndex : 1] || cells[0] || '',
+      functional: cells[functionalIndex],
+      dysfunctional: cells[dysfunctionalIndex],
+    }))
+    .filter((row) => row.need && row.functional && row.dysfunctional);
+  if (!responses.length) {
+    els.kanoSurveyResult.textContent = '已读取文件，但未识别到 need/functional/dysfunctional 三列。建议上传包含“需求、正向答案、反向答案”的回收数据 CSV。';
+    return;
+  }
+  const analysis = analyzeKanoResponses(responses);
+  els.kanoSurveyResult.innerHTML = `
+    <b>已读取 ${responses.length} 份 Kano 正反向答案。</b>
+    <div class="method-table">
+      <span>需求</span><span>主导类型</span><span>Better</span><span>Worse</span><span>样本</span>
+      ${analysis.map((item) => `
+        <b>${escapeHtml(item.need)}</b>
+        <b>${escapeHtml(item.dominantCategory)}</b>
+        <span>${item.better}</span>
+        <span>${item.worse}</span>
+        <span>${item.total}</span>
+      `).join('')}
+    </div>
+  `;
 }
 
 function renderSankeyChart(project) {
@@ -1483,6 +1553,7 @@ function renderTeacherInsights() {
 }
 
 function buildGradeRows() {
+  state.gradebook = state.gradebook || {};
   return state.groups.map((group) => {
     const progress = calculateStageProgress(group.project).overall;
     const evidence = STAGES.reduce((sum, stage) => sum + (group.project.stages[stage.id]?.evidence?.length || 0), 0);
@@ -1493,7 +1564,17 @@ function buildGradeRows() {
       : score >= 70
         ? '已形成基础闭环，建议补充调研证据与服务蓝图细节。'
         : '当前材料偏少，需优先补齐调研、需求筛选和方案验证证据。';
-    return { group, progress, evidence, score, comment };
+    const record = state.gradebook[group.id] || {};
+    return {
+      group,
+      progress,
+      evidence,
+      score,
+      comment,
+      manualScore: record.manualScore ?? score,
+      manualComment: record.comment || comment,
+      gradedAt: record.gradedAt || '',
+    };
   });
 }
 
@@ -1509,12 +1590,28 @@ function renderGradingTable() {
           <span>${row.progress}%</span>
           <span>${row.evidence}</span>
           <strong>${row.score}</strong>
-          <input type="number" min="0" max="100" value="${row.score}" data-manual-score="${escapeHtml(row.group.id)}" />
-          <textarea rows="2" data-manual-comment="${escapeHtml(row.group.id)}">${escapeHtml(row.comment)}</textarea>
+          <input type="number" min="0" max="100" value="${row.manualScore}" data-manual-score="${escapeHtml(row.group.id)}" />
+          <textarea rows="2" data-manual-comment="${escapeHtml(row.group.id)}">${escapeHtml(row.manualComment)}</textarea>
         </div>
       `).join('')}
     `
     : '<p class="muted">导入名单并生成分组后显示成绩表。</p>';
+}
+
+function updateGradebookRecord(event) {
+  const scoreField = event.target.closest('[data-manual-score]');
+  const commentField = event.target.closest('[data-manual-comment]');
+  const groupId = scoreField?.dataset.manualScore || commentField?.dataset.manualComment;
+  if (!groupId) return;
+  state.gradebook = state.gradebook || {};
+  const score = document.querySelector(`[data-manual-score="${CSS.escape(groupId)}"]`)?.value;
+  const comment = document.querySelector(`[data-manual-comment="${CSS.escape(groupId)}"]`)?.value || '';
+  state.gradebook[groupId] = {
+    manualScore: Math.max(0, Math.min(100, Number(score) || 0)),
+    comment,
+    gradedAt: new Date().toISOString(),
+  };
+  saveState();
 }
 
 function renderRoleBoard() {
@@ -1773,7 +1870,13 @@ function buildLocalAnalysis(vizId, project, rawText = '') {
     `整体进度：${progress.overall}%，过程证据 ${evidenceCount} 条，需求 ${project.needs.length} 条，方案 ${project.concepts.length} 个。`,
     `主要关键词：${keywords.map((item) => `${item.word}(${item.count})`).join('、') || '暂无'}`,
   ];
-  if (vizId === 'rankChart') base.push(`TOPSIS 当前优先方案为「${topConcept}」，建议核查评分依据是否来自真实调研证据。`);
+  if (vizId === 'rankChart') {
+    const topsis = calculateTopsisAnalysis(project.concepts, topsisCriteria());
+    base.push(`TOPSIS 当前优先方案为「${topConcept}」，建议核查评分依据是否来自真实调研证据。`);
+    topsis.ranked.slice(0, 5).forEach((item, index) => {
+      base.push(`${index + 1}. ${item.title}：贴近度 ${item.score}，正理想距离 ${item.bestDistance}，负理想距离 ${item.worstDistance}`);
+    });
+  }
   if (vizId === 'kanoChart') base.push('Kano 图应重点关注“重要度高、满意度低”的需求，把它们转入方案构思和测试验证。');
   if (vizId === 'stakeholderMap') base.push('利益相关者需要从角色名称推进到责任、触点、利益冲突和协同关系。');
   if (vizId === 'blueprintTemplate' || vizId === 'sankeyChart') base.push('服务蓝图应补齐用户行为、前台触点、后台支持、实体证据和失败点。');
@@ -1793,18 +1896,17 @@ function runSmartScore() {
 }
 
 function exportGradebook() {
-  const rows = [['group', 'members', 'progress', 'evidence', 'smart_score', 'manual_score', 'comment']];
+  const rows = [['group', 'members', 'progress', 'evidence', 'smart_score', 'manual_score', 'comment', 'graded_at']];
   buildGradeRows().forEach((row) => {
-    const manualScore = document.querySelector(`[data-manual-score="${CSS.escape(row.group.id)}"]`)?.value || row.score;
-    const comment = document.querySelector(`[data-manual-comment="${CSS.escape(row.group.id)}"]`)?.value || row.comment;
     rows.push([
       row.group.name,
       row.group.members.map((member) => member.name).join(' / '),
       row.progress,
       row.evidence,
       row.score,
-      manualScore,
-      comment,
+      row.manualScore,
+      row.manualComment,
+      row.gradedAt,
     ]);
   });
   downloadText('service-design-gradebook.csv', rows.map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`).join(',')).join('\n'), 'text/csv;charset=utf-8');
@@ -2258,12 +2360,16 @@ function getEvidenceType(title) {
 }
 
 function rankedConcepts() {
-  return rankByTopsis(activeProject().concepts, [
+  return rankByTopsis(activeProject().concepts, topsisCriteria());
+}
+
+function topsisCriteria() {
+  return [
     { key: 'novelty', weight: 0.25, direction: 'benefit' },
     { key: 'feasibility', weight: 0.3, direction: 'benefit' },
     { key: 'serviceQuality', weight: 0.3, direction: 'benefit' },
     { key: 'risk', weight: 0.15, direction: 'cost' },
-  ]);
+  ];
 }
 
 function activeGroup() {
@@ -2423,6 +2529,7 @@ function createSampleState() {
   return {
     studentText: sampleStudentsText,
     groups,
+    gradebook: {},
   };
 }
 
