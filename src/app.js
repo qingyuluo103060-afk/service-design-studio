@@ -4,8 +4,10 @@ import {
   calculateCompetencyProfile,
   calculateStageProgress,
   classifyKano,
+  COURSE_MODULES,
   createGroups,
   extractKeywords,
+  getVisibleModules,
   getRiskStatus,
   getStageToolkit,
   parseStudentText,
@@ -42,12 +44,16 @@ let activeLoginRole = 'student';
 let activeRegisterRole = 'student';
 let currentUser = null;
 let activeRole = 'teacher';
+let activeModuleId = 'overview';
 let activeGroupId = state.groups[0]?.id || 'g1';
 let activeStageId = 'empathy';
 
 const els = {
   body: document.body,
   roleButtons: [...document.querySelectorAll('[data-role]')],
+  moduleNav: document.querySelector('#moduleNav'),
+  workspaceModules: [...document.querySelectorAll('.workspace-module')],
+  workspaceRoleHint: document.querySelector('#workspaceRoleHint'),
   studentList: document.querySelector('#studentList'),
   groupSize: document.querySelector('#groupSize'),
   buildGroups: document.querySelector('#buildGroups'),
@@ -75,6 +81,12 @@ const els = {
   wordCloud: document.querySelector('#wordCloud'),
   rankChart: document.querySelector('#rankChart'),
   competencyRadar: document.querySelector('#competencyRadar'),
+  flowFunnel: document.querySelector('#flowFunnel'),
+  stakeholderMap: document.querySelector('#stakeholderMap'),
+  kanoChart: document.querySelector('#kanoChart'),
+  sankeyChart: document.querySelector('#sankeyChart'),
+  studentInsights: document.querySelector('#studentInsights'),
+  teacherInsights: document.querySelector('#teacherInsights'),
   assistantAdvice: document.querySelector('#assistantAdvice'),
   importData: document.querySelector('#importData'),
   importFile: document.querySelector('#importFile'),
@@ -147,6 +159,12 @@ function bindEvents() {
       activeRole = button.dataset.role;
       render();
     });
+  });
+
+  els.moduleNav.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-module-id]');
+    if (!button) return;
+    setActiveModule(button.dataset.moduleId);
   });
 
   els.buildGroups.addEventListener('click', () => {
@@ -630,6 +648,8 @@ function render() {
   applyRolePermissions();
   els.body.classList.toggle('student-mode', activeRole === 'student');
   els.roleButtons.forEach((button) => button.classList.toggle('active', button.dataset.role === activeRole));
+  renderModuleNav();
+  renderWorkspaceModules();
   renderStages();
   renderGroups();
   renderProject();
@@ -639,6 +659,62 @@ function render() {
   renderNeeds();
   renderConcepts();
   renderLight();
+}
+
+function setActiveModule(moduleId) {
+  const module = COURSE_MODULES.find((item) => item.id === moduleId);
+  if (!module) return;
+  if (!module.roles.includes(activeRole)) return;
+  activeModuleId = module.id;
+  if (module.stageId) {
+    activeStageId = module.stageId;
+  }
+  render();
+}
+
+function renderModuleNav() {
+  const visibleModules = getVisibleModules(activeRole);
+  if (!visibleModules.some((item) => item.id === activeModuleId)) {
+    activeModuleId = visibleModules[0]?.id || 'overview';
+  }
+  if (els.workspaceRoleHint) {
+    els.workspaceRoleHint.textContent = activeRole === 'teacher'
+      ? '教师可查看课堂统计、班级管理和学生工作区'
+      : '学生仅显示个人项目工作模块';
+  }
+
+  const grouped = visibleModules.reduce((acc, module) => {
+    if (!acc.has(module.group)) acc.set(module.group, []);
+    acc.get(module.group).push(module);
+    return acc;
+  }, new Map());
+
+  els.moduleNav.innerHTML = [...grouped.entries()].map(([group, modules], groupIndex) => `
+    <details class="module-group" ${groupIndex < 3 ? 'open' : ''}>
+      <summary>${escapeHtml(group)}</summary>
+      <div class="module-group-list">
+        ${modules.map((module) => `
+          <button class="module-link${module.id === activeModuleId ? ' active' : ''}" data-module-id="${module.id}">
+            <span class="module-icon">${escapeHtml(module.icon)}</span>
+            <span>
+              <strong>${escapeHtml(module.title)}</strong>
+              <small>${escapeHtml(module.description)}</small>
+            </span>
+          </button>
+        `).join('')}
+      </div>
+    </details>
+  `).join('');
+}
+
+function renderWorkspaceModules() {
+  const visibleIds = new Set(getVisibleModules(activeRole).map((module) => module.id));
+  els.workspaceModules.forEach((module) => {
+    const moduleId = module.id.replace('module-', '');
+    const visible = visibleIds.has(moduleId);
+    module.hidden = !visible;
+    module.classList.toggle('active', visible && moduleId === activeModuleId);
+  });
 }
 
 async function loadCurrentUser() {
@@ -854,6 +930,112 @@ function renderVisuals() {
     : '<p class="muted">添加方案后显示排序。</p>';
 
   els.competencyRadar.innerHTML = renderRadar(calculateCompetencyProfile(project));
+  renderFunnel(project);
+  renderStakeholderMap(project);
+  renderKanoChart(project);
+  renderSankeyChart(project);
+  renderStudentInsights(project);
+  renderTeacherInsights();
+}
+
+function renderFunnel(project) {
+  if (!els.flowFunnel) return;
+  const evidenceCount = STAGES.reduce((sum, stage) => sum + (project.stages[stage.id]?.evidence?.length || 0), 0);
+  const rows = [
+    { label: '调研证据', value: evidenceCount, width: 100 },
+    { label: '用户洞察', value: Math.max(project.stages.define.evidence.length, 1), width: 78 },
+    { label: '需求条目', value: project.needs.length, width: 58 },
+    { label: '方案概念', value: project.concepts.length, width: 42 },
+    { label: '测试迭代', value: project.stages.prototype.evidence.length, width: 28 },
+  ];
+  els.flowFunnel.innerHTML = rows.map((row) => `
+    <div class="funnel-row" style="--w:${row.width}%">
+      <span>${escapeHtml(row.label)}</span>
+      <b>${row.value}</b>
+    </div>
+  `).join('');
+}
+
+function renderStakeholderMap(project) {
+  if (!els.stakeholderMap) return;
+  const scenario = `${project.title} ${project.scenario}`;
+  const people = ['目标用户', '家属/同伴', '一线服务人员', '管理者', '平台/设备'];
+  els.stakeholderMap.innerHTML = people.map((name, index) => `
+    <div class="stakeholder-node node-${index}">
+      <span>${index === 0 ? '核心' : `S${index}`}</span>
+      <b>${escapeHtml(name)}</b>
+      <small>${escapeHtml(scenario.slice(0, 18))}</small>
+    </div>
+  `).join('');
+}
+
+function renderKanoChart(project) {
+  if (!els.kanoChart) return;
+  if (!project.needs.length) {
+    els.kanoChart.innerHTML = '<p class="muted">添加需求后显示 Kano 分类。</p>';
+    return;
+  }
+  els.kanoChart.innerHTML = project.needs.map((need) => {
+    const x = Math.max(6, Math.min(94, Number(need.satisfaction) * 18));
+    const y = Math.max(6, Math.min(94, 100 - Number(need.importance) * 18));
+    return `<span class="kano-point" style="left:${x}%;top:${y}%;" title="${escapeHtml(need.title)}">${escapeHtml(need.title.slice(0, 2))}</span>`;
+  }).join('') + '<span class="kano-axis x">满意度</span><span class="kano-axis y">重要度</span>';
+}
+
+function renderSankeyChart(project) {
+  if (!els.sankeyChart) return;
+  const evidenceCount = STAGES.reduce((sum, stage) => sum + (project.stages[stage.id]?.evidence?.length || 0), 0);
+  const rows = [
+    ['调研证据', evidenceCount],
+    ['痛点洞察', Math.max(project.stages.define.evidence.length, 1)],
+    ['需求筛选', project.needs.length],
+    ['方案方向', project.concepts.length],
+    ['成果测试', project.stages.prototype.evidence.length],
+  ];
+  els.sankeyChart.innerHTML = rows.map(([label, value], index) => `
+    <div class="sankey-step">
+      <span>${escapeHtml(label)}</span>
+      <b>${value}</b>
+    </div>
+    ${index < rows.length - 1 ? '<i class="sankey-link"></i>' : ''}
+  `).join('');
+}
+
+function renderStudentInsights(project) {
+  if (!els.studentInsights) return;
+  const progress = calculateStageProgress(project);
+  const ranked = rankedConcepts();
+  const bestConcept = ranked[0]?.title || '暂无方案';
+  const risk = getRiskStatus(progress.overall);
+  els.studentInsights.innerHTML = [
+    { label: '当前进度', value: `${progress.overall}%`, note: risk.suggestion },
+    { label: '优先方案', value: bestConcept, note: '根据 TOPSIS 综合评分生成，可继续结合访谈反馈修正。' },
+    { label: '测试证据', value: project.stages.prototype.evidence.length, note: '建议至少记录一次可观察的用户测试或服务走查反馈。' },
+  ].map((item) => `
+    <article class="insight-card">
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.value)}</strong>
+      <p>${escapeHtml(item.note)}</p>
+    </article>
+  `).join('');
+}
+
+function renderTeacherInsights() {
+  if (!els.teacherInsights) return;
+  const groupStats = state.groups.map((group) => ({
+    name: group.name,
+    progress: calculateStageProgress(group.project).overall,
+    evidence: STAGES.reduce((sum, stage) => sum + (group.project.stages[stage.id]?.evidence?.length || 0), 0),
+    needs: group.project.needs.length,
+    concepts: group.project.concepts.length,
+  }));
+  const average = Math.round(groupStats.reduce((sum, group) => sum + group.progress, 0) / (groupStats.length || 1));
+  els.teacherInsights.innerHTML = `
+    <div class="visual-card"><h3>全班进度柱状图</h3>${groupStats.map((group) => renderBar(group.name, group.progress)).join('')}</div>
+    <div class="visual-card"><h3>小组产出对比</h3>${groupStats.map((group) => renderMiniBar(`${group.name} 证据`, Math.min(100, group.evidence * 20))).join('')}</div>
+    <div class="visual-card"><h3>课堂平均进度</h3><div class="big-number">${average}%</div><p class="muted">用于判断是否需要集中讲解或分组辅导。</p></div>
+    <div class="visual-card"><h3>数据流桑基概览</h3><div class="sankey-chart compact">${groupStats.map((group) => `<div class="sankey-step"><span>${escapeHtml(group.name)}</span><b>${group.needs + group.concepts}</b></div>`).join('<i class="sankey-link"></i>')}</div></div>
+  `;
 }
 
 function renderAssistant() {
