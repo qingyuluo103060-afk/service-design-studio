@@ -8,6 +8,7 @@
   classifyKano,
   COURSE_MODULES,
   METHOD_TASK_CHAIN,
+  METHOD_PROCESS_TEMPLATES,
   buildMethodTaskPlan,
   summarizeMethodTaskProgress,
   createGroups,
@@ -67,6 +68,7 @@ const els = {
   moduleNav: document.querySelector('#moduleNav'),
   workspaceModules: [...document.querySelectorAll('.workspace-module')],
   workspaceRoleHint: document.querySelector('#workspaceRoleHint'),
+  currentMethodPanel: document.querySelector('#currentMethodPanel'),
   studentList: document.querySelector('#studentList'),
   groupSize: document.querySelector('#groupSize'),
   buildGroups: document.querySelector('#buildGroups'),
@@ -80,6 +82,7 @@ const els = {
   dashboardRisk: document.querySelector('#dashboardRisk'),
   methodChainSummary: document.querySelector('#methodChainSummary'),
   methodTaskBoard: document.querySelector('#methodTaskBoard'),
+  methodProcessBoard: document.querySelector('#methodProcessBoard'),
   projectTitle: document.querySelector('#projectTitle'),
   projectScenario: document.querySelector('#projectScenario'),
   generateTaskPlan: document.querySelector('#generateTaskPlan'),
@@ -761,6 +764,7 @@ function render() {
   els.roleButtons.forEach((button) => button.classList.toggle('active', button.dataset.role === activeRole));
   renderModuleNav();
   renderWorkspaceModules();
+  renderCurrentMethodPanel();
   renderStages();
   renderGroups();
   renderProject();
@@ -802,15 +806,15 @@ function renderModuleNav() {
   }, new Map());
 
   els.moduleNav.innerHTML = [...grouped.entries()].map(([group, modules], groupIndex) => `
-    <details class="module-group" ${groupIndex < 3 ? 'open' : ''}>
-      <summary>${escapeHtml(group)}</summary>
+    <details class="module-group" ${modules.some((module) => module.id === activeModuleId) || groupIndex < 2 ? 'open' : ''}>
+      <summary><span>${String(groupIndex + 1).padStart(2, '0')}</span>${escapeHtml(group)}</summary>
       <div class="module-group-list">
         ${modules.map((module) => `
           <button class="module-link${module.id === activeModuleId ? ' active' : ''}" data-module-id="${module.id}">
             <span class="module-icon">${escapeHtml(module.icon)}</span>
             <span>
               <strong>${escapeHtml(module.title)}</strong>
-              <small>${escapeHtml(module.description)}</small>
+              <small>${escapeHtml(shortenText(module.description, 34))}</small>
             </span>
           </button>
         `).join('')}
@@ -823,10 +827,38 @@ function renderWorkspaceModules() {
   const visibleIds = new Set(getVisibleModules(activeRole).map((module) => module.id));
   els.workspaceModules.forEach((module) => {
     const moduleId = module.id.replace('module-', '');
-    const visible = visibleIds.has(moduleId);
-    module.hidden = !visible;
-    module.classList.toggle('active', visible && moduleId === activeModuleId);
+    const active = visibleIds.has(moduleId) && moduleId === activeModuleId;
+    module.hidden = !active;
+    module.setAttribute('aria-hidden', active ? 'false' : 'true');
+    module.style.display = active ? 'grid' : 'none';
+    module.classList.toggle('active', active);
   });
+}
+
+function renderCurrentMethodPanel() {
+  if (!els.currentMethodPanel) return;
+  const module = COURSE_MODULES.find((item) => item.id === activeModuleId) || COURSE_MODULES[0];
+  const templates = METHOD_PROCESS_TEMPLATES.filter((item) => item.moduleId === activeModuleId);
+  const plan = buildMethodTaskPlan(activeProject());
+  const nextTask = plan.find((task) => !task.completed) || plan[plan.length - 1];
+  const activeTask = plan.find((task) => task.moduleId === activeModuleId) || nextTask;
+  els.currentMethodPanel.innerHTML = `
+    <div class="current-method-grid">
+      <div class="current-method-main">
+        <p class="eyebrow">Current Step</p>
+        <h2>${escapeHtml(module.title)}</h2>
+        <p>${escapeHtml(activeTask?.title || module.description)}</p>
+      </div>
+      <div class="current-method-check">
+        <b>本步先准备</b>
+        ${(templates[0]?.inputs || activeTask?.actions || ['填写当前模块材料']).slice(0, 4).map((item) => `<span>${escapeHtml(item)}</span>`).join('')}
+      </div>
+      <div class="current-method-check">
+        <b>本步应产出</b>
+        ${(templates[0]?.rows?.map((row) => row[0]) || activeTask?.outputs || ['阶段证据']).slice(0, 4).map((item) => `<span>${escapeHtml(item)}</span>`).join('')}
+      </div>
+    </div>
+  `;
 }
 
 async function loadCurrentUser() {
@@ -964,6 +996,7 @@ function renderMethodChain() {
   const markup = plan.map((task, index) => renderMethodTaskCard(task, index)).join('');
   if (els.methodTaskBoard) els.methodTaskBoard.innerHTML = markup;
   if (els.taskPlanPreview) els.taskPlanPreview.innerHTML = markup;
+  renderMethodProcessBoard();
 }
 
 function renderMethodTaskCard(task, index) {
@@ -986,6 +1019,42 @@ function renderMethodTaskCard(task, index) {
       <div class="method-tool-row">${tools}</div>
       <ul>${outputs}</ul>
       ${task.note ? `<p class="method-note">${escapeHtml(task.note)}</p>` : ''}
+    </article>
+  `;
+}
+
+function renderMethodProcessBoard() {
+  if (!els.methodProcessBoard) return;
+  const focused = METHOD_PROCESS_TEMPLATES.filter((item) => item.moduleId === activeModuleId);
+  const templates = focused.length ? focused : METHOD_PROCESS_TEMPLATES;
+  els.methodProcessBoard.innerHTML = `
+    <div class="method-process-head">
+      <div><p class="eyebrow">Method Tables</p><h3>标准化过程表格与报告素材</h3></div>
+      <span>${focused.length ? '当前模块' : '全流程'} · ${templates.length} 张表</span>
+    </div>
+    <div class="method-process-grid">
+      ${templates.map(renderMethodProcessCard).join('')}
+    </div>
+  `;
+}
+
+function renderMethodProcessCard(template) {
+  return `
+    <article class="method-process-card">
+      <div class="method-process-title">
+        <span>${escapeHtml(template.phase)}</span>
+        <h3>${escapeHtml(template.title)}</h3>
+        <p>${escapeHtml(template.purpose)}</p>
+      </div>
+      <div class="method-mini-list">
+        <b>进入本方法前需要</b>
+        ${template.inputs.map((item) => `<small>${escapeHtml(item)}</small>`).join('')}
+      </div>
+      <ol>${template.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
+      <div class="method-template-table" style="--cols:${template.columns.length}">
+        ${template.columns.map((column) => `<b>${escapeHtml(column)}</b>`).join('')}
+        ${template.rows.flatMap((row) => row.map((cell) => `<span>${escapeHtml(cell)}</span>`)).join('')}
+      </div>
     </article>
   `;
 }
@@ -1943,6 +2012,13 @@ function buildProjectReport(project) {
   const methodPlan = buildMethodTaskPlan(project);
   const methodSummary = summarizeMethodTaskProgress(methodPlan);
   const methodLines = methodPlan.map((task, index) => `${index + 1}. ${task.phase}：${task.title}（${task.completed ? '已完成' : '待完善'}）`).join('\n');
+  const processAppendix = METHOD_PROCESS_TEMPLATES.map((template, index) => [
+    `${index + 1}. ${template.title}`,
+    `目的：${template.purpose}`,
+    `前置材料：${template.inputs.join('、')}`,
+    `过程步骤：${template.steps.join(' → ')}`,
+    `建议表格字段：${template.columns.join(' / ')}`,
+  ].join('\n')).join('\n\n');
   return [
     `《服务设计》课程项目报告`,
     '',
@@ -1961,6 +2037,9 @@ function buildProjectReport(project) {
     `十一、测试与评估：当前整体闭环进度 ${progress.overall}%，需结合 SERVQUAL/TOPSIS 说明验证结果。`,
     `十二、关键词摘要：${keywords.map((item) => `${item.word}(${item.count})`).join('、') || '待补充'}`,
     `十三、反思与迭代：说明本轮设计的局限、数据不足和下一轮改进计划。`,
+    '',
+    '附录：方法过程表格清单',
+    processAppendix,
   ].join('\n');
 }
 
@@ -2578,6 +2657,11 @@ function escapeHtml(value) {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
+}
+
+function shortenText(value, maxLength = 40) {
+  const text = String(value || '').trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
 }
 
 function formatDate(value) {
