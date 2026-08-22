@@ -7,7 +7,7 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260723-authfix" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260723-rolefix" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
@@ -22,8 +22,12 @@
           <button class="segmented" data-auth-mode="code">教师口令</button>
         </div>
         <div id="loginForm" class="auth-form">
+          <div class="role-choice" id="loginRoleChoice">
+            <button type="button" class="segmented active" data-login-role="student">学生</button>
+            <button type="button" class="segmented" data-login-role="teacher">教师</button>
+          </div>
           <label>
-            学号
+            <span id="loginIdentityLabel">学号</span>
             <input id="loginStudentId" type="text" inputmode="numeric" autocomplete="username" maxlength="9" placeholder="21XX17XXX" />
           </label>
           <label>
@@ -33,19 +37,23 @@
           <button id="loginAccount">登录工作台</button>
         </div>
         <div id="registerForm" class="auth-form" hidden>
+          <div class="role-choice" id="registerRoleChoice">
+            <button type="button" class="segmented active" data-register-role="student">学生</button>
+            <button type="button" class="segmented" data-register-role="teacher">教师</button>
+          </div>
           <label>
             姓名
             <input id="registerName" type="text" autocomplete="name" />
           </label>
-          <label>
+          <label id="registerClassField">
             班级
             <input id="registerClass" type="text" placeholder="产品设计1班" />
           </label>
           <label>
-            学号
+            <span id="registerIdentityLabel">学号</span>
             <input id="registerStudentId" type="text" inputmode="numeric" maxlength="9" placeholder="9位数字，如 210117001" />
           </label>
-          <p class="field-hint">学号规则：9 位数字，第 1-2 位为 21，第 5-6 位为 17。</p>
+          <p id="registerIdentityHint" class="field-hint">学号规则：9 位数字，第 1-2 位为 21，第 5-6 位为 17。</p>
           <label>
             密码
             <input id="registerPassword" type="password" autocomplete="new-password" placeholder="至少 6 位" />
@@ -76,6 +84,14 @@
             <button class="segmented active" data-role="teacher">教师端</button>
             <button class="segmented" data-role="student">学生端</button>
           </div>
+          <div id="userProfile" class="user-profile" hidden>
+            <span id="userAvatar" class="user-avatar">SD</span>
+            <span>
+              <strong id="userName">未登录</strong>
+              <small id="userMeta">访客</small>
+            </span>
+          </div>
+          <button id="logoutAccount" class="ghost" hidden>退出</button>
           <button id="importData" class="ghost">导入数据</button>
           <input id="importFile" type="file" accept="application/json,.json" hidden />
           <button id="exportData" class="ghost">导出数据</button>
@@ -290,6 +306,6 @@
         </aside>
       </main>
     </div>
-    <script type="module" src="./src/app.js?v=20260723-authfix"></script>
+    <script type="module" src="./src/app.js?v=20260723-rolefix"></script>
   </body>
 </html>
