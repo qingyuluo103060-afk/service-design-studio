@@ -321,8 +321,71 @@ export function calculateAhpWeights(matrix) {
   return geometricMeans.map((value) => value / total);
 }
 
+export function calculateAhpConsistency(matrix) {
+  const weights = calculateAhpWeights(matrix);
+  const n = weights.length;
+  if (!n) return { weights: [], lambdaMax: 0, ci: 0, cr: 0, consistent: false };
+  const weightedSums = matrix.map((row) =>
+    row.reduce((sum, value, index) => sum + (Number(value) || 0) * weights[index], 0),
+  );
+  const lambdaValues = weightedSums.map((value, index) => value / (weights[index] || 1));
+  const lambdaMax = lambdaValues.reduce((sum, value) => sum + value, 0) / n;
+  const ci = n > 2 ? (lambdaMax - n) / (n - 1) : 0;
+  const ri = { 1: 0, 2: 0, 3: 0.58, 4: 0.9, 5: 1.12, 6: 1.24, 7: 1.32, 8: 1.41, 9: 1.45 };
+  const cr = ri[n] ? ci / ri[n] : 0;
+  return {
+    weights: weights.map((value) => Number(value.toFixed(4))),
+    lambdaMax: Number(lambdaMax.toFixed(4)),
+    ci: Number(Math.max(0, ci).toFixed(4)),
+    cr: Number(Math.max(0, cr).toFixed(4)),
+    consistent: cr <= 0.1,
+  };
+}
+
+export function analyzeKanoResponses(responses = []) {
+  const buckets = new Map();
+  responses.forEach((response) => {
+    const need = String(response.need || response.title || '').trim();
+    if (!need) return;
+    const category = evaluateKanoPair(response.functional, response.dysfunctional);
+    if (!buckets.has(need)) {
+      buckets.set(need, {
+        need,
+        counts: {
+          魅力型需求: 0,
+          期望型需求: 0,
+          基本型需求: 0,
+          无差异需求: 0,
+          反向需求: 0,
+          可疑结果: 0,
+        },
+        total: 0,
+      });
+    }
+    const bucket = buckets.get(need);
+    bucket.counts[category] += 1;
+    bucket.total += 1;
+  });
+  return [...buckets.values()].map((bucket) => {
+    const entries = Object.entries(bucket.counts).sort((a, b) => b[1] - a[1]);
+    const dominantCategory = entries[0]?.[0] || '无差异需求';
+    return {
+      ...bucket,
+      dominantCategory,
+      better: Number((((bucket.counts.魅力型需求 + bucket.counts.期望型需求) / (bucket.total || 1))).toFixed(4)),
+      worse: Number((-((bucket.counts.基本型需求 + bucket.counts.期望型需求) / (bucket.total || 1))).toFixed(4)),
+    };
+  });
+}
+
 export function rankByTopsis(items, criteria) {
-  if (!items.length || !criteria.length) return [];
+  return calculateTopsisAnalysis(items, criteria).ranked;
+}
+
+export function calculateTopsisAnalysis(items, criteria) {
+  if (!items.length || !criteria.length) {
+    return { ranked: [], normalized: {}, weightedRows: [], idealBest: {}, idealWorst: {} };
+  }
   const normalized = {};
   criteria.forEach((criterion) => {
     const denominator = Math.sqrt(
@@ -349,14 +412,20 @@ export function rankByTopsis(items, criteria) {
       criterion.direction === 'cost' ? Math.max(...values) : Math.min(...values);
   });
 
-  return weightedRows
+  const ranked = weightedRows
     .map((row) => {
       const bestDistance = euclideanDistance(row.values, idealBest, criteria);
       const worstDistance = euclideanDistance(row.values, idealWorst, criteria);
       const score = worstDistance / ((bestDistance + worstDistance) || 1);
-      return { ...row.item, score: Number(score.toFixed(4)) };
+      return {
+        ...row.item,
+        score: Number(score.toFixed(4)),
+        bestDistance: Number(bestDistance.toFixed(4)),
+        worstDistance: Number(worstDistance.toFixed(4)),
+      };
     })
     .sort((a, b) => b.score - a.score);
+  return { ranked, normalized, weightedRows, idealBest, idealWorst };
 }
 
 export function buildMethodTaskPlan(project = {}) {
@@ -490,6 +559,16 @@ export function validateClassroomState(input) {
     value: {
       studentText: String(input.studentText || ''),
       groups,
+      gradebook: input.gradebook && typeof input.gradebook === 'object'
+        ? Object.fromEntries(Object.entries(input.gradebook).map(([key, value]) => [
+            key,
+            {
+              manualScore: Math.max(0, Math.min(100, Number(value?.manualScore) || 0)),
+              comment: String(value?.comment || ''),
+              gradedAt: value?.gradedAt || '',
+            },
+          ]))
+        : {},
     },
   };
 }
@@ -565,6 +644,56 @@ function keywordTone(word) {
   return 'research';
 }
 
+function evaluateKanoPair(functional, dysfunctional) {
+  const normalize = (value) => {
+    const text = String(value || '').trim();
+    if (/不喜欢|dislike/i.test(text)) return 'dislike';
+    if (/喜欢|like/i.test(text)) return 'like';
+    if (/理应如此|必须|must|expect/i.test(text)) return 'must';
+    if (/无所谓|中立|neutral/i.test(text)) return 'neutral';
+    if (/可以忍受|忍受|live|tolerate/i.test(text)) return 'tolerate';
+    return 'neutral';
+  };
+  const table = {
+    like: {
+      like: '可疑结果',
+      must: '魅力型需求',
+      neutral: '魅力型需求',
+      tolerate: '魅力型需求',
+      dislike: '期望型需求',
+    },
+    must: {
+      like: '反向需求',
+      must: '无差异需求',
+      neutral: '无差异需求',
+      tolerate: '无差异需求',
+      dislike: '基本型需求',
+    },
+    neutral: {
+      like: '反向需求',
+      must: '无差异需求',
+      neutral: '无差异需求',
+      tolerate: '无差异需求',
+      dislike: '基本型需求',
+    },
+    tolerate: {
+      like: '反向需求',
+      must: '无差异需求',
+      neutral: '无差异需求',
+      tolerate: '无差异需求',
+      dislike: '基本型需求',
+    },
+    dislike: {
+      like: '反向需求',
+      must: '反向需求',
+      neutral: '反向需求',
+      tolerate: '反向需求',
+      dislike: '可疑结果',
+    },
+  };
+  return table[normalize(functional)]?.[normalize(dysfunctional)] || '无差异需求';
+}
+
 function euclideanDistance(values, ideal, criteria) {
   return Math.sqrt(
     criteria.reduce((sum, criterion) => sum + (values[criterion.key] - ideal[criterion.key]) ** 2, 0),
@@ -615,9 +744,22 @@ function normalizeProject(project = {}) {
     ? {
         query: String(project.literatureReview.query || ''),
         result: String(project.literatureReview.result || ''),
+        items: Array.isArray(project.literatureReview.items)
+          ? project.literatureReview.items.map((item) => ({
+              source: String(item.source || ''),
+              title: String(item.title || ''),
+              year: item.year || '',
+              venue: String(item.venue || ''),
+              authors: String(item.authors || ''),
+              doi: String(item.doi || ''),
+              citedBy: Number(item.citedBy) || 0,
+              url: String(item.url || ''),
+              abstract: String(item.abstract || ''),
+            }))
+          : [],
         updatedAt: project.literatureReview.updatedAt || '',
       }
-    : { query: '', result: '', updatedAt: '' };
+    : { query: '', result: '', items: [], updatedAt: '' };
   return normalized;
 }
 
