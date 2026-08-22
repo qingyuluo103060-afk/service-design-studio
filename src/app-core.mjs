@@ -22,6 +22,89 @@ export const STAGES = [
   },
 ];
 
+export const METHOD_TASK_CHAIN = [
+  {
+    id: 'topic',
+    phase: '选题确定',
+    moduleId: 'research',
+    title: '明确服务设计选题与真实场景',
+    method: '选题雷达 / 服务场景界定',
+    tools: ['选题输入', '服务场景描述', '任务拆解'],
+    actions: ['写清服务对象、场景边界和初始问题', '判断是否可调研、可接触、可改进'],
+    outputs: ['项目主题', '真实服务场景', '初始问题陈述'],
+  },
+  {
+    id: 'literature',
+    phase: '文献支撑',
+    moduleId: 'research',
+    title: '检索相关文献并提炼研究空白',
+    method: 'AI 文献检索提示词 / 研究空白分析',
+    tools: ['一键文献推荐', '研究空白分析', '关键词扩展'],
+    actions: ['围绕选题检索服务设计、用户体验、评价方法相关研究', '归纳已有研究关注点和未解决问题'],
+    outputs: ['推荐文献方向', '研究空白', '可借鉴方法'],
+  },
+  {
+    id: 'research',
+    phase: '用户调研',
+    moduleId: 'research',
+    title: '完成真实或模拟用户调研',
+    method: '访谈 / 观察 / 问卷 / 服务探险',
+    tools: ['访谈提纲', '原始数据上传', '调研四象限'],
+    actions: ['收集访谈文字稿、观察记录或问卷数据', '保留原始证据与关键摘录'],
+    outputs: ['调研原始数据', '访谈/观察证据', '初步问题点'],
+  },
+  {
+    id: 'coding',
+    phase: '分析定义',
+    moduleId: 'persona',
+    title: '从调研材料中提炼用户画像与利益相关者',
+    method: '主题分析 / 扎根理论 / 利益相关者地图',
+    tools: ['访谈编码', '用户画像卡片', '利益相关者生态图'],
+    actions: ['进行开放编码或主题归纳', '识别目标用户、协同者、管理者、平台设备'],
+    outputs: ['编码表', '用户画像', '利益相关者关系图'],
+  },
+  {
+    id: 'kanoAhp',
+    phase: '需求筛选',
+    moduleId: 'needs',
+    title: '形成需求列表并完成 Kano-AHP 优先级判断',
+    method: 'Kano 分类 / AHP 权重',
+    tools: ['Kano 问卷生成', '问卷数据上传', '需求优先级图'],
+    actions: ['把调研发现转化为需求条目', '生成并回收 Kano 问卷', '用 AHP 判断需求权重'],
+    outputs: ['Kano 分类表', 'AHP 权重', '关键需求清单'],
+  },
+  {
+    id: 'triz',
+    phase: '方案生成',
+    moduleId: 'concepts',
+    title: '基于关键需求和 TRIZ 生成创新方案',
+    method: 'TRIZ 矛盾分析 / 发明原理',
+    tools: ['方案卡片', '智能方案建议', '成员协作分工'],
+    actions: ['识别服务矛盾', '用 TRIZ 原理生成多个备选方案', '说明方案对应的需求证据'],
+    outputs: ['TRIZ 矛盾说明', '备选方案', '方案证据链'],
+  },
+  {
+    id: 'topsisBlueprint',
+    phase: '方案筛选与蓝图',
+    moduleId: 'blueprint',
+    title: '用 TOPSIS 筛选方案并转化为服务蓝图',
+    method: 'AHP-TOPSIS / 服务蓝图',
+    tools: ['TOPSIS 排序图', '服务蓝图模板', '智能分析'],
+    actions: ['设置评价指标与权重', '计算方案贴近度并排序', '将优先方案转化为标准服务蓝图'],
+    outputs: ['TOPSIS 排序', '优选方案', '服务蓝图'],
+  },
+  {
+    id: 'testingReport',
+    phase: '测试评估与成果',
+    moduleId: 'testing',
+    title: '完成测试评估并生成课程报告',
+    method: 'SERVQUAL / 迭代记录 / 项目报告',
+    tools: ['测试反馈', '智能评价', '报告导出'],
+    actions: ['收集测试反馈', '从服务质量维度解释改进效果', '导出报告与资料包'],
+    outputs: ['测试评估', '迭代建议', '课程项目报告'],
+  },
+];
+
 export const COURSE_MODULES = [
   {
     id: 'overview',
@@ -194,6 +277,12 @@ export function createEmptyProject() {
     needs: [],
     concepts: [],
     feedback: [],
+    taskStatus: {},
+    literatureReview: {
+      query: '',
+      result: '',
+      updatedAt: '',
+    },
   };
 }
 
@@ -268,6 +357,54 @@ export function rankByTopsis(items, criteria) {
       return { ...row.item, score: Number(score.toFixed(4)) };
     })
     .sort((a, b) => b.score - a.score);
+}
+
+export function buildMethodTaskPlan(project = {}) {
+  const taskStatus = project.taskStatus && typeof project.taskStatus === 'object' ? project.taskStatus : {};
+  return METHOD_TASK_CHAIN.map((task) => {
+    const status = taskStatus[task.id] || {};
+    const autoReady = isMethodTaskAutoReady(task.id, project);
+    return {
+      ...task,
+      completed: Boolean(status.completed || autoReady),
+      manualCompleted: Boolean(status.completed),
+      autoReady,
+      note: String(status.note || ''),
+      updatedAt: status.updatedAt || '',
+    };
+  });
+}
+
+export function summarizeMethodTaskProgress(plan = []) {
+  const total = Array.isArray(plan) ? plan.length : 0;
+  const completed = Array.isArray(plan) ? plan.filter((task) => task.completed).length : 0;
+  return {
+    total,
+    completed,
+    percent: total ? Math.round((completed / total) * 100) : 0,
+  };
+}
+
+function isMethodTaskAutoReady(taskId, project = {}) {
+  const title = String(project.title || '').trim();
+  const scenario = String(project.scenario || '').trim();
+  const empathyEvidence = project.stages?.empathy?.evidence || [];
+  const defineEvidence = project.stages?.define?.evidence || [];
+  const prototypeEvidence = project.stages?.prototype?.evidence || [];
+  const needs = project.needs || [];
+  const concepts = project.concepts || [];
+  const feedback = project.feedback || [];
+  const hasTopic = title && title !== '未命名服务设计项目' && scenario && scenario !== '请描述真实服务场景、目标用户与初步问题。';
+
+  if (taskId === 'topic') return hasTopic;
+  if (taskId === 'literature') return Boolean(project.literatureReview?.result);
+  if (taskId === 'research') return empathyEvidence.filter((item) => item.title && item.content).length >= 2;
+  if (taskId === 'coding') return defineEvidence.filter((item) => item.title && item.content).length >= 1;
+  if (taskId === 'kanoAhp') return needs.length >= 2;
+  if (taskId === 'triz') return concepts.length >= 2;
+  if (taskId === 'topsisBlueprint') return concepts.length >= 2 && prototypeEvidence.length >= 1;
+  if (taskId === 'testingReport') return feedback.length >= 1 || prototypeEvidence.length >= 2;
+  return false;
 }
 
 export function buildAssistantAdvice(project, stageId) {
@@ -464,6 +601,23 @@ function normalizeProject(project = {}) {
       }))
     : [];
   normalized.feedback = Array.isArray(project.feedback) ? project.feedback : [];
+  normalized.taskStatus = project.taskStatus && typeof project.taskStatus === 'object'
+    ? Object.fromEntries(Object.entries(project.taskStatus).map(([key, value]) => [
+        key,
+        {
+          completed: Boolean(value?.completed),
+          note: String(value?.note || ''),
+          updatedAt: value?.updatedAt || '',
+        },
+      ]))
+    : {};
+  normalized.literatureReview = project.literatureReview && typeof project.literatureReview === 'object'
+    ? {
+        query: String(project.literatureReview.query || ''),
+        result: String(project.literatureReview.result || ''),
+        updatedAt: project.literatureReview.updatedAt || '',
+      }
+    : { query: '', result: '', updatedAt: '' };
   return normalized;
 }
 
