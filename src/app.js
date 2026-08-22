@@ -90,7 +90,13 @@ const els = {
   competencyRadar: document.querySelector('#competencyRadar'),
   flowFunnel: document.querySelector('#flowFunnel'),
   stakeholderMap: document.querySelector('#stakeholderMap'),
+  personaBoard: document.querySelector('#personaBoard'),
   kanoChart: document.querySelector('#kanoChart'),
+  kanoQuestionnaire: document.querySelector('#kanoQuestionnaire'),
+  kanoSurveyFile: document.querySelector('#kanoSurveyFile'),
+  downloadKanoSurvey: document.querySelector('#downloadKanoSurvey'),
+  analyzeKanoSurvey: document.querySelector('#analyzeKanoSurvey'),
+  kanoSurveyResult: document.querySelector('#kanoSurveyResult'),
   sankeyChart: document.querySelector('#sankeyChart'),
   studentInsights: document.querySelector('#studentInsights'),
   teacherInsights: document.querySelector('#teacherInsights'),
@@ -149,6 +155,11 @@ const els = {
   runResearchAnalysis: document.querySelector('#runResearchAnalysis'),
   researchAnalysisResult: document.querySelector('#researchAnalysisResult'),
   researchQuadrant: document.querySelector('#researchQuadrant'),
+  interviewTranscript: document.querySelector('#interviewTranscript'),
+  interviewMethod: document.querySelector('#interviewMethod'),
+  interviewCodingPrompt: document.querySelector('#interviewCodingPrompt'),
+  runInterviewCoding: document.querySelector('#runInterviewCoding'),
+  interviewCodingResult: document.querySelector('#interviewCodingResult'),
   blueprintTemplate: document.querySelector('#blueprintTemplate'),
   analyzeBlueprint: document.querySelector('#analyzeBlueprint'),
   generateProjectReport: document.querySelector('#generateProjectReport'),
@@ -161,6 +172,10 @@ const els = {
   runSmartScore: document.querySelector('#runSmartScore'),
   exportGradebook: document.querySelector('#exportGradebook'),
   gradingTable: document.querySelector('#gradingTable'),
+  randomAssignRoles: document.querySelector('#randomAssignRoles'),
+  clearGroupRoles: document.querySelector('#clearGroupRoles'),
+  roleBoard: document.querySelector('#roleBoard'),
+  challengeBoard: document.querySelector('#challengeBoard'),
 };
 
 init();
@@ -357,12 +372,18 @@ function bindEvents() {
   els.rawResearchFile?.addEventListener('change', () => readTextFileInto(els.rawResearchFile, els.rawResearchData));
   els.rubricFile?.addEventListener('change', () => readTextFileInto(els.rubricFile, els.rubricText));
   els.runResearchAnalysis?.addEventListener('click', runResearchAnalysis);
+  els.runInterviewCoding?.addEventListener('click', runInterviewCoding);
+  els.downloadKanoSurvey?.addEventListener('click', downloadKanoSurvey);
+  els.analyzeKanoSurvey?.addEventListener('click', analyzeKanoSurvey);
   els.analyzeBlueprint?.addEventListener('click', () => openSmartAnalysis('blueprintTemplate'));
   els.generateProjectReport?.addEventListener('click', generateProjectReport);
   els.exportProjectPackage?.addEventListener('click', exportProjectPackage);
   els.printProjectPdf?.addEventListener('click', printProjectPdf);
   els.runSmartScore?.addEventListener('click', runSmartScore);
   els.exportGradebook?.addEventListener('click', exportGradebook);
+  els.randomAssignRoles?.addEventListener('click', randomAssignRoles);
+  els.clearGroupRoles?.addEventListener('click', clearGroupRoles);
+  els.roleBoard?.addEventListener('input', updateGroupRole);
   els.body.addEventListener('mouseover', handleVisualizationHover);
   els.body.addEventListener('mouseout', handleVisualizationLeave);
   els.body.addEventListener('click', handleVisualizationClick);
@@ -1033,13 +1054,17 @@ function renderVisuals() {
   els.competencyRadar.innerHTML = renderRadar(calculateCompetencyProfile(project));
   renderFunnel(project);
   renderStakeholderMap(project);
+  renderPersonaBoard(project);
   renderKanoChart(project);
+  renderKanoQuestionnaire(project);
   renderSankeyChart(project);
   renderBlueprintTemplate(project);
   renderStudentInsights(project);
   renderTeacherInsights();
   renderResearchQuadrant(buildQuadrantPoints(project));
   renderGradingTable();
+  renderRoleBoard();
+  renderChallengeBoard();
   enhanceVisualCards();
 }
 
@@ -1063,23 +1088,33 @@ function renderFunnel(project) {
 
 function renderStakeholderMap(project) {
   if (!els.stakeholderMap) return;
+  const visuals = getStakeholderVisuals();
+  const center = visuals[0];
+  const around = visuals.slice(1);
   const scenario = `${project.title} ${project.scenario}`;
   els.stakeholderMap.innerHTML = `
-    <div class="stakeholder-board">
-      ${getStakeholderVisuals().map((item) => `
-        <article class="stakeholder-cluster" data-stakeholder-type="${escapeHtml(item.type)}" data-tone="${escapeHtml(item.tone)}">
-          <span class="stakeholder-symbol">${escapeHtml(item.symbol)}</span>
-          <div>
-            <b>${escapeHtml(item.label)}</b>
-            <em>${escapeHtml(item.role)}</em>
-          </div>
-          <div class="stakeholder-chip-list">
-            ${(item.items || []).map((name) => `<span>${escapeHtml(name)}</span>`).join('')}
-          </div>
+    <div class="stakeholder-orbit-stage">
+      <div class="orbit-ring outer"></div>
+      <div class="orbit-ring inner"></div>
+      <article class="stakeholder-core" data-tone="${escapeHtml(center.tone)}">
+        <span>${escapeHtml(center.symbol)}</span>
+        <b>${escapeHtml(center.label)}</b>
+        <em>${escapeHtml(center.role)}</em>
+      </article>
+      ${around.map((item, index) => `
+        <article class="stakeholder-satellite sat-${index + 1}" data-tone="${escapeHtml(item.tone)}">
+          <span>${escapeHtml(item.symbol)}</span>
+          <b>${escapeHtml(item.label)}</b>
+          <em>${escapeHtml(item.role)}</em>
+          <div>${(item.items || []).map((name) => `<small>${escapeHtml(name)}</small>`).join('')}</div>
         </article>
       `).join('')}
+      <i class="orbit-link l1"></i><i class="orbit-link l2"></i><i class="orbit-link l3"></i><i class="orbit-link l4"></i>
     </div>
-    <p class="stakeholder-note">当前场景：${escapeHtml(scenario.slice(0, 46))}</p>
+    <div class="stakeholder-method-strip">
+      <span>产品与家具方向</span><span>产品与交互方向</span><span>产品与移动方向</span><span>产品与休闲方向</span>
+    </div>
+    <p class="stakeholder-note">当前场景：${escapeHtml(scenario.slice(0, 70))}</p>
   `;
 }
 
@@ -1094,6 +1129,91 @@ function renderKanoChart(project) {
     const y = Math.max(6, Math.min(94, 100 - Number(need.importance) * 18));
     return `<span class="kano-point" style="left:${x}%;top:${y}%;" title="${escapeHtml(need.title)}">${escapeHtml(need.title.slice(0, 2))}</span>`;
   }).join('') + '<span class="kano-axis x">满意度</span><span class="kano-axis y">重要度</span>';
+}
+
+function renderPersonaBoard(project) {
+  if (!els.personaBoard) return;
+  const keywords = extractKeywords(`${project.title} ${project.scenario}`).slice(0, 4);
+  const needs = project.needs.slice(0, 4);
+  const personas = [
+    {
+      name: '核心体验者',
+      avatar: '人',
+      tone: 'green',
+      tags: keywords.map((item) => item.word),
+      goals: ['快速理解流程', '减少等待焦虑', '获得清晰反馈'],
+      pain: needs[0]?.title || '信息入口不清晰',
+      radar: [4, 3, 5, 2, 4],
+    },
+    {
+      name: '协同陪伴者',
+      avatar: '伴',
+      tone: 'amber',
+      tags: ['陪同', '沟通', '提醒', '决策'],
+      goals: ['同步进度', '协助判断', '降低沟通成本'],
+      pain: needs[1]?.title || '无法及时掌握服务状态',
+      radar: [3, 4, 4, 3, 5],
+    },
+  ];
+  els.personaBoard.innerHTML = personas.map((persona) => `
+    <article class="persona-card" data-tone="${persona.tone}">
+      <div class="persona-head">
+        <span class="persona-avatar">${escapeHtml(persona.avatar)}</span>
+        <div><h3>${escapeHtml(persona.name)}</h3><p>基于当前调研证据自动生成，可作为画像草稿继续修改。</p></div>
+      </div>
+      <div class="persona-tags">${persona.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join('')}</div>
+      <div class="persona-matrix">
+        <section><b>目标</b>${persona.goals.map((goal) => `<small>${escapeHtml(goal)}</small>`).join('')}</section>
+        <section><b>痛点</b><small>${escapeHtml(persona.pain)}</small></section>
+      </div>
+      <div class="mini-radar">${persona.radar.map((value, index) => `<i style="--v:${value * 20}%" title="维度${index + 1}"></i>`).join('')}</div>
+    </article>
+  `).join('');
+}
+
+function renderKanoQuestionnaire(project) {
+  if (!els.kanoQuestionnaire) return;
+  const needs = project.needs.length ? project.needs : [{ title: '待补充需求', importance: 3, satisfaction: 3 }];
+  els.kanoQuestionnaire.innerHTML = needs.map((need, index) => `
+    <article class="kano-question-card">
+      <b>Q${index + 1}. ${escapeHtml(need.title)}</b>
+      <p>正向问题：如果系统能够“${escapeHtml(need.title)}”，你的感受是？</p>
+      <p>反向问题：如果系统不能“${escapeHtml(need.title)}”，你的感受是？</p>
+      <small>选项：喜欢 / 理应如此 / 无所谓 / 可以忍受 / 不喜欢</small>
+    </article>
+  `).join('');
+}
+
+function downloadKanoSurvey() {
+  const rows = [['need_id', 'need', 'question_type', 'question', 'options']];
+  activeProject().needs.forEach((need, index) => {
+    rows.push([index + 1, need.title, 'functional', `如果能够${need.title}，你的感受是？`, '喜欢|理应如此|无所谓|可以忍受|不喜欢']);
+    rows.push([index + 1, need.title, 'dysfunctional', `如果不能${need.title}，你的感受是？`, '喜欢|理应如此|无所谓|可以忍受|不喜欢']);
+  });
+  downloadText('kano-questionnaire.csv', rowsToCsv(rows), 'text/csv;charset=utf-8');
+}
+
+async function analyzeKanoSurvey() {
+  if (!els.kanoSurveyResult) return;
+  const file = els.kanoSurveyFile?.files?.[0];
+  const fallback = activeProject().needs.map((need) => `${need.title}：${classifyKano(need.importance, need.satisfaction)}`);
+  if (!file) {
+    els.kanoSurveyResult.textContent = `未上传问卷数据，已根据当前需求评分生成分类建议：\n${fallback.join('\n')}`;
+    return;
+  }
+  const text = await file.text();
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  const counts = new Map();
+  lines.slice(1).forEach((line) => {
+    const cells = parseCsvLine(line);
+    const need = cells[1] || cells[0] || '未命名需求';
+    counts.set(need, (counts.get(need) || 0) + 1);
+  });
+  els.kanoSurveyResult.textContent = [
+    `已读取 ${Math.max(0, lines.length - 1)} 条问卷记录。`,
+    '分类建议：',
+    ...[...counts.entries()].map(([need, count]) => `${need}：样本 ${count}，建议结合正反向答案矩阵复核 Kano 类型。`),
+  ].join('\n');
 }
 
 function renderSankeyChart(project) {
@@ -1245,6 +1365,73 @@ function renderGradingTable() {
     : '<p class="muted">导入名单并生成分组后显示成绩表。</p>';
 }
 
+function renderRoleBoard() {
+  if (!els.roleBoard) return;
+  const group = activeGroup();
+  group.roles = group.roles || {};
+  els.roleBoard.innerHTML = group.members.length
+    ? group.members.map((member) => `
+      <article class="role-card">
+        <b>${escapeHtml(member.name)}</b>
+        <small>${escapeHtml(member.id || '')}</small>
+        <select data-role-member="${escapeHtml(member.id || member.name)}">
+          ${teamRoleOptions().map((role) => `<option value="${escapeHtml(role)}"${group.roles[member.id || member.name] === role ? ' selected' : ''}>${escapeHtml(role)}</option>`).join('')}
+        </select>
+      </article>
+    `).join('')
+    : '<p class="muted">当前小组暂无成员。</p>';
+}
+
+function randomAssignRoles() {
+  const group = activeGroup();
+  const roles = teamRoleOptions();
+  group.roles = {};
+  group.members.forEach((member, index) => {
+    group.roles[member.id || member.name] = roles[index % roles.length];
+  });
+  saveState();
+  renderRoleBoard();
+}
+
+function clearGroupRoles() {
+  activeGroup().roles = {};
+  saveState();
+  renderRoleBoard();
+}
+
+function updateGroupRole(event) {
+  const field = event.target.closest('[data-role-member]');
+  if (!field) return;
+  const group = activeGroup();
+  group.roles = group.roles || {};
+  group.roles[field.dataset.roleMember] = field.value;
+  saveState();
+}
+
+function teamRoleOptions() {
+  return ['项目统筹', '用户访谈', '问卷与数据', '画像与洞察', '方案与TRIZ', '蓝图与原型', '测试评估', '报告表达'];
+}
+
+function renderChallengeBoard() {
+  if (!els.challengeBoard) return;
+  const project = activeProject();
+  const progress = calculateStageProgress(project);
+  const gates = [
+    { title: '第1关 选题与调研', done: progress.empathy >= 60, hint: '至少形成访谈/观察/问卷证据' },
+    { title: '第2关 画像与利益相关者', done: project.stages.define.evidence.length > 0, hint: '完成画像、关系图和关键洞察' },
+    { title: '第3关 Kano/AHP 需求筛选', done: project.needs.length >= 3, hint: '生成问卷并形成需求分类' },
+    { title: '第4关 TRIZ/TOPSIS 方案筛选', done: project.concepts.length >= 3, hint: '提出并排序至少3个方案' },
+    { title: '第5关 蓝图与测试评估', done: progress.prototype >= 50, hint: '补齐服务蓝图、测试证据和迭代说明' },
+  ];
+  els.challengeBoard.innerHTML = gates.map((gate, index) => `
+    <article class="challenge-card ${gate.done ? 'passed' : ''}">
+      <span>${gate.done ? '✓' : index + 1}</span>
+      <b>${escapeHtml(gate.title)}</b>
+      <small>${escapeHtml(gate.hint)}</small>
+    </article>
+  `).join('');
+}
+
 function renderLiveRail() {
   if (!els.liveCourseMap) return;
   const project = activeProject();
@@ -1307,6 +1494,84 @@ async function runResearchAnalysis() {
     renderResearchQuadrant(buildQuadrantPoints(activeProject(), text));
     els.runResearchAnalysis.disabled = false;
   }
+}
+
+async function runInterviewCoding() {
+  const text = els.interviewTranscript?.value?.trim() || '';
+  const method = els.interviewMethod?.value || 'thematic';
+  const prompt = els.interviewCodingPrompt?.value?.trim() || '';
+  if (!text) {
+    els.interviewCodingResult.innerHTML = '<p class="muted">请先粘贴访谈文字稿。</p>';
+    return;
+  }
+  const local = method === 'grounded'
+    ? buildGroundedTheoryAnalysis(text, prompt)
+    : buildThematicAnalysis(text, prompt);
+  els.interviewCodingResult.innerHTML = renderCodingResult(local);
+  try {
+    const aiText = await requestModelText(`${local.method}。请严格按照以下步骤复核并补充分析，不要跳步：${local.steps.join('、')}。\n研究问题：${prompt}\n访谈材料：\n${text.slice(0, 6000)}`);
+    els.interviewCodingResult.innerHTML += `<div class="model-result"><b>大模型复核结果</b>\n${escapeHtml(aiText)}</div>`;
+  } catch {
+    // Keep deterministic local coding when no personal model is configured.
+  }
+}
+
+function buildThematicAnalysis(text, researchQuestion) {
+  const keywords = extractKeywords(text).slice(0, 10);
+  const quotes = splitQualitativeUnits(text).slice(0, 8);
+  const codes = keywords.map((item) => ({ code: item.word, evidence: quotes.find((quote) => quote.includes(item.word)) || quotes[0] || '', count: item.count }));
+  const themes = [
+    { theme: '信息理解与认知负荷', codes: codes.slice(0, 3).map((item) => item.code) },
+    { theme: '流程触点与等待体验', codes: codes.slice(3, 6).map((item) => item.code) },
+    { theme: '协同支持与情绪压力', codes: codes.slice(6, 9).map((item) => item.code) },
+  ].filter((item) => item.codes.length);
+  return {
+    method: '主题分析',
+    question: researchQuestion || '围绕用户体验、服务触点和需求机会进行主题分析。',
+    steps: ['熟悉材料', '生成初始编码', '搜索主题', '复核主题', '定义并命名主题', '形成分析报告'],
+    codes,
+    themes,
+    memo: '建议学生回到原始语句复核主题边界，避免只依据高频词命名主题。',
+  };
+}
+
+function buildGroundedTheoryAnalysis(text, researchQuestion) {
+  const units = splitQualitativeUnits(text);
+  const keywords = extractKeywords(text).slice(0, 12);
+  const openCodes = keywords.map((item, index) => ({ code: item.word, evidence: units[index % Math.max(1, units.length)] || '', count: item.count }));
+  const axial = [
+    { category: '用户情境', relation: '描述服务发生的场景、限制和资源', codes: openCodes.slice(0, 4).map((item) => item.code) },
+    { category: '服务断点', relation: '解释问题如何在触点之间累积', codes: openCodes.slice(4, 8).map((item) => item.code) },
+    { category: '设计机会', relation: '连接需求优先级、方案构思与验证', codes: openCodes.slice(8, 12).map((item) => item.code) },
+  ].filter((item) => item.codes.length);
+  return {
+    method: '扎根理论',
+    question: researchQuestion || '从访谈资料中归纳服务问题、核心范畴和设计机会。',
+    steps: ['开放编码', '持续比较', '主轴编码', '选择编码', '理论备忘录', '饱和检查'],
+    codes: openCodes,
+    themes: axial.map((item) => ({ theme: item.category, codes: item.codes, relation: item.relation })),
+    memo: '当前为课堂辅助编码结果，正式研究需多人编码、比较一致性并继续补充样本至理论饱和。',
+  };
+}
+
+function renderCodingResult(result) {
+  return `
+    <div class="coding-steps">${result.steps.map((step, index) => `<span>${index + 1}. ${escapeHtml(step)}</span>`).join('')}</div>
+    <article class="coding-card"><h3>${escapeHtml(result.method)}研究问题</h3><p>${escapeHtml(result.question)}</p></article>
+    <div class="coding-grid">
+      <article class="coding-card"><h3>初始编码</h3>${result.codes.map((item) => `<p><b>${escapeHtml(item.code)}</b><small>${escapeHtml(item.evidence || '待回查原文')}</small></p>`).join('')}</article>
+      <article class="coding-card"><h3>主题 / 范畴</h3>${result.themes.map((item) => `<p><b>${escapeHtml(item.theme)}</b><small>${escapeHtml((item.codes || []).join('、'))}${item.relation ? `；${escapeHtml(item.relation)}` : ''}</small></p>`).join('')}</article>
+    </div>
+    <article class="coding-card"><h3>方法备忘录</h3><p>${escapeHtml(result.memo)}</p></article>
+  `;
+}
+
+function splitQualitativeUnits(text) {
+  return String(text || '')
+    .split(/[。！？!?;\n\r]+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 6)
+    .slice(0, 40);
 }
 
 async function openSmartAnalysis(vizId) {
@@ -1683,7 +1948,33 @@ function projectToCsv(project) {
   });
   project.needs.forEach((item) => rows.push(['need', '', item.title, item.importance, item.satisfaction, '']));
   project.concepts.forEach((item) => rows.push(['concept', '', item.title, item.feasibility, item.serviceQuality, `novelty=${item.novelty};risk=${item.risk}`]));
+  return rowsToCsv(rows);
+}
+
+function rowsToCsv(rows) {
   return rows.map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`).join(',')).join('\n');
+}
+
+function parseCsvLine(line) {
+  const cells = [];
+  let value = '';
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"' && line[index + 1] === '"') {
+      value += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === ',' && !quoted) {
+      cells.push(value);
+      value = '';
+    } else {
+      value += char;
+    }
+  }
+  cells.push(value);
+  return cells;
 }
 
 function downloadText(filename, content, type) {
@@ -2040,4 +2331,5 @@ async function safeJson(response) {
     return { ok: false, error: '服务器返回内容无法解析，请刷新页面后重试。' };
   }
 }
+
 
