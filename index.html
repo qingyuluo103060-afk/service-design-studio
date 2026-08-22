@@ -7,7 +7,7 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260823-method-v11" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260823-method-v12" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
@@ -423,6 +423,24 @@
         <div id="vizModalBody" class="viz-modal-body"></div>
       </div>
     </section>
-    <script type="module" src="./src/app.js?v=20260823-method-v11"></script>
+    <section id="aiCompanion" class="ai-companion" aria-label="AI 助教">
+      <button id="aiCompanionToggle" class="ai-companion-toggle" type="button" aria-expanded="false" aria-controls="aiCompanionPanel">
+        <span class="ai-face"><i></i></span>
+        <span><b>AI 助教</b><small>有问题点我</small></span>
+      </button>
+      <aside id="aiCompanionPanel" class="ai-companion-panel" hidden>
+        <header>
+          <div><p class="eyebrow">Course Copilot</p><h2>服务设计 AI 助教</h2></div>
+          <button id="aiCompanionClose" class="ghost" type="button">收起</button>
+        </header>
+        <div id="aiQuickPrompts" class="ai-quick-prompts"></div>
+        <div id="aiChatMessages" class="ai-chat-messages" aria-live="polite"></div>
+        <form id="aiChatForm" class="ai-chat-form">
+          <textarea id="aiChatInput" rows="3" placeholder="例如：我不理解 AHP 判断矩阵怎么填，请结合当前项目解释。"></textarea>
+          <button id="aiChatSend" type="submit">发送</button>
+        </form>
+      </aside>
+    </section>
+    <script type="module" src="./src/app.js?v=20260823-method-v12"></script>
   </body>
 </html>
