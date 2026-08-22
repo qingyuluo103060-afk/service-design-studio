@@ -1,4 +1,4 @@
-const CACHE_NAME = 'service-design-studio-v18-method-v8';
+const CACHE_NAME = 'service-design-studio-v19-method-v9';
 const ASSETS = [
   './',
   './index.html',
