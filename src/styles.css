@@ -3502,6 +3502,17 @@ small,
   color: #486671;
 }
 
+.stage-ai-button {
+  width: fit-content;
+  margin-top: 12px;
+  border: 1px solid rgba(15, 86, 102, 0.14);
+  background: linear-gradient(135deg, #daf4f7, #fff1c7);
+}
+
+#testModelConnection {
+  width: fit-content;
+}
+
 .current-method-check {
   display: flex;
   flex-wrap: wrap;
