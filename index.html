@@ -7,7 +7,7 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260822-method-v6" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260823-method-v7" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
@@ -130,6 +130,14 @@
 
           <section id="module-overview" class="workspace-module active">
             <div class="module-title-row"><div><p class="eyebrow">Dashboard</p><h2>项目总览</h2></div><span class="status-chip">数据闭环</span></div>
+            <section class="panel method-chain-panel">
+              <div class="panel-title">
+                <div><p class="eyebrow">Method Chain</p><h2>课程任务拆解与方法链</h2></div>
+                <span id="methodChainSummary" class="status-chip">0/8</span>
+              </div>
+              <p class="muted">按“选题、文献支撑、调研、编码分析、Kano-AHP、TRIZ、TOPSIS蓝图、测试报告”的顺序推进，避免先方案后调研。</p>
+              <div id="methodTaskBoard" class="method-task-board"></div>
+            </section>
             <section class="panel export-hub">
               <div class="panel-title">
                 <div><p class="eyebrow">Project Package</p><h2>项目报告与资料集成导出</h2></div>
@@ -158,6 +166,12 @@
                 <label>项目主题<input id="projectTitle" type="text" /></label>
                 <label>真实服务场景<textarea id="projectScenario" rows="4"></textarea></label>
               </div>
+              <div class="data-actions">
+                <button id="generateTaskPlan" type="button">生成任务拆解</button>
+                <button id="recommendLiterature" type="button" class="ghost">一键文献推荐与研究空白</button>
+              </div>
+              <div id="taskPlanPreview" class="task-plan-preview"></div>
+              <div id="literatureResult" class="model-result">选题确定后，可使用个人大模型 API 生成相关文献方向、检索关键词和研究空白分析。</div>
             </section>
             <section class="panel research-lab">
               <div class="panel-title">
@@ -344,6 +358,6 @@
         <div id="vizModalBody" class="viz-modal-body"></div>
       </div>
     </section>
-    <script type="module" src="./src/app.js?v=20260822-method-v6"></script>
+    <script type="module" src="./src/app.js?v=20260823-method-v7"></script>
   </body>
 </html>
