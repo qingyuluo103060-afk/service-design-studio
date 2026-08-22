@@ -66,6 +66,8 @@ let activeStageId = 'empathy';
 let lockedKeyword = '';
 let bubblePlayTimer = null;
 let bubblePlayIndex = 0;
+let aiCompanionOpen = false;
+let aiChatHistory = [];
 
 const els = {
   body: document.body,
@@ -220,6 +222,15 @@ const els = {
   analyzeTopsisMatrix: document.querySelector('#analyzeTopsisMatrix'),
   analyzeTopsisWithAi: document.querySelector('#analyzeTopsisWithAi'),
   topsisMatrixResult: document.querySelector('#topsisMatrixResult'),
+  aiCompanion: document.querySelector('#aiCompanion'),
+  aiCompanionToggle: document.querySelector('#aiCompanionToggle'),
+  aiCompanionPanel: document.querySelector('#aiCompanionPanel'),
+  aiCompanionClose: document.querySelector('#aiCompanionClose'),
+  aiQuickPrompts: document.querySelector('#aiQuickPrompts'),
+  aiChatMessages: document.querySelector('#aiChatMessages'),
+  aiChatForm: document.querySelector('#aiChatForm'),
+  aiChatInput: document.querySelector('#aiChatInput'),
+  aiChatSend: document.querySelector('#aiChatSend'),
 };
 
 init();
@@ -449,6 +460,10 @@ function bindEvents() {
   els.randomAssignRoles?.addEventListener('click', randomAssignRoles);
   els.clearGroupRoles?.addEventListener('click', clearGroupRoles);
   els.roleBoard?.addEventListener('input', updateGroupRole);
+  els.aiCompanionToggle?.addEventListener('click', toggleAiCompanion);
+  els.aiCompanionClose?.addEventListener('click', closeAiCompanion);
+  els.aiQuickPrompts?.addEventListener('click', handleQuickPromptClick);
+  els.aiChatForm?.addEventListener('submit', handleAiChatSubmit);
   els.body.addEventListener('mouseover', handleVisualizationHover);
   els.body.addEventListener('mouseout', handleVisualizationLeave);
   els.body.addEventListener('click', handleVisualizationClick);
@@ -1007,6 +1022,7 @@ function renderLight() {
   renderVisuals();
   renderLiveRail();
   renderAssistant();
+  renderAiCompanion();
 }
 
 function renderStages() {
@@ -2330,6 +2346,132 @@ async function runStageAiAssistant(moduleId = activeModuleId) {
   } catch (error) {
     els.vizModalBody.innerHTML = `<div class="model-result">${escapeHtml(`${localPrompt}\n\n模型未连接：${error.message}\n请到“AI 模型设置”测试个人 API Key。`)}</div>`;
   }
+}
+
+function toggleAiCompanion() {
+  aiCompanionOpen = !aiCompanionOpen;
+  renderAiCompanion();
+  if (aiCompanionOpen) setTimeout(() => els.aiChatInput?.focus(), 0);
+}
+
+function closeAiCompanion() {
+  aiCompanionOpen = false;
+  renderAiCompanion();
+}
+
+function renderAiCompanion() {
+  if (!els.aiCompanionPanel || !els.aiCompanionToggle) return;
+  els.aiCompanionPanel.hidden = !aiCompanionOpen;
+  els.aiCompanionToggle.setAttribute('aria-expanded', String(aiCompanionOpen));
+  els.aiCompanion?.classList.toggle('open', aiCompanionOpen);
+  renderQuickPrompts();
+  renderAiChatMessages();
+}
+
+function renderQuickPrompts() {
+  if (!els.aiQuickPrompts) return;
+  const prompts = getCompanionPrompts(activeModuleId);
+  els.aiQuickPrompts.innerHTML = prompts.map((item) => `
+    <button type="button" data-ai-prompt="${escapeHtml(item.prompt)}">
+      <span>${escapeHtml(item.label)}</span>
+      <small>${escapeHtml(item.hint)}</small>
+    </button>
+  `).join('');
+}
+
+function getCompanionPrompts(moduleId) {
+  const common = [
+    { label: '下一步做什么', hint: '根据当前项目给行动清单', prompt: '请根据当前项目和课程方法链，告诉我下一步应该做什么，输出3-5条可执行任务。' },
+    { label: '帮我解释术语', hint: '用课堂语言解释', prompt: '请用适合本科生的语言解释当前模块的关键方法术语，并给一个服务设计例子。' },
+  ];
+  const map = {
+    research: [
+      { label: '生成访谈提纲', hint: '围绕当前选题', prompt: '请根据当前选题生成一份半结构化访谈提纲，包含开场、核心问题、追问和记录要点。' },
+      { label: '调研数据怎么整理', hint: '从原始材料到证据', prompt: '请说明我应该如何整理访谈、观察和问卷开放题材料，并指出哪些内容要上传到平台。' },
+    ],
+    persona: [
+      { label: '怎么做用户画像', hint: '从证据到画像', prompt: '请根据当前调研材料，说明用户画像应该包含哪些字段，并给出可直接填写的画像草稿。' },
+      { label: '利益相关者怎么分', hint: '角色和关系', prompt: '请帮我识别当前项目中的目标用户、协作者、一线服务者、管理者和平台/设备，并说明它们的关系。' },
+    ],
+    journey: [
+      { label: '旅程图怎么填', hint: '阶段/触点/情绪', prompt: '请指导我填写用户旅程图，说明每个阶段应如何确定触点、行为、情绪、痛点和机会点。' },
+      { label: '找关键断点', hint: '从低情绪阶段切入', prompt: '请根据当前用户旅程图找出最关键的服务断点，并说明如何转入服务蓝图。' },
+    ],
+    needs: [
+      { label: 'Kano 问卷怎么做', hint: '正反向问题', prompt: '请根据当前需求列表，解释 Kano 正向和反向问题如何设计，并说明 Better-Worse 系数如何解释。' },
+      { label: 'AHP 矩阵怎么填', hint: '1-9标度和CR', prompt: '请用当前需求举例解释 AHP 成对比较矩阵怎么填，CR 不通过时应该怎么修改。' },
+    ],
+    concepts: [
+      { label: 'TRIZ 矛盾怎么找', hint: '改善/恶化/原理', prompt: '请根据当前关键需求，帮我识别服务矛盾、改善目标、恶化风险，并推荐 TRIZ 发明原理。' },
+      { label: '方案卡怎么写', hint: '证据链和触点', prompt: '请把当前 TRIZ 分析转化为服务方案卡，要求包含需求证据、触点变化、用户价值和风险。' },
+    ],
+    blueprint: [
+      { label: '服务蓝图怎么画', hint: '五行模板', prompt: '请根据当前优先方案，指导我填写标准服务蓝图：用户行为、前台触点、后台支持、实体证据、失败点。' },
+      { label: 'TOPSIS 怎么解释', hint: '贴近度和排序', prompt: '请解释当前 TOPSIS 排序结果，并说明为什么优先方案适合进入服务蓝图。' },
+    ],
+    testing: [
+      { label: '测试怎么设计', hint: 'SERVQUAL', prompt: '请根据当前方案设计一次服务原型测试，包含测试对象、任务、记录表和 SERVQUAL 评价维度。' },
+      { label: '评估结果怎么写', hint: '报告表达', prompt: '请帮我把测试反馈整理成课程报告中的测试评估段落。' },
+    ],
+  };
+  return [...(map[moduleId] || []), ...common].slice(0, 4);
+}
+
+function handleQuickPromptClick(event) {
+  const button = event.target.closest('[data-ai-prompt]');
+  if (!button) return;
+  els.aiChatInput.value = button.dataset.aiPrompt;
+  els.aiChatInput.focus();
+}
+
+async function handleAiChatSubmit(event) {
+  event.preventDefault();
+  const message = els.aiChatInput?.value?.trim();
+  if (!message) return;
+  aiChatHistory.push({ role: 'user', content: message });
+  els.aiChatInput.value = '';
+  renderAiChatMessages();
+  els.aiChatSend.disabled = true;
+  try {
+    const reply = await requestModelText(buildCompanionPrompt(message));
+    aiChatHistory.push({ role: 'assistant', content: reply || '模型没有返回内容，请换一种问法。' });
+  } catch (error) {
+    aiChatHistory.push({
+      role: 'assistant',
+      content: `我现在还不能连接到大模型：${error.message}\n请先到“AI 模型设置”保存并测试个人 API Key。你也可以先点击上方提示词，按本地流程继续推进。`,
+    });
+  } finally {
+    els.aiChatSend.disabled = false;
+    renderAiChatMessages();
+  }
+}
+
+function buildCompanionPrompt(message) {
+  const module = COURSE_MODULES.find((item) => item.id === activeModuleId) || COURSE_MODULES[0];
+  const recent = aiChatHistory.slice(-6).map((item) => `${item.role === 'user' ? '用户' : 'AI'}：${item.content}`).join('\n');
+  return [
+    '你是《服务设计》课程平台中的右侧 AI 助教。回答要短、清楚、可执行，不要编造数据。',
+    `当前模块：${module.title}`,
+    `当前阶段：${activeStage().title}`,
+    `用户最新问题：${message}`,
+    `近期对话：\n${recent}`,
+    '请优先结合当前项目上下文，必要时提醒用户应该上传哪些材料、点击哪个方法按钮、生成哪些表格或图形。',
+  ].join('\n');
+}
+
+function renderAiChatMessages() {
+  if (!els.aiChatMessages) return;
+  const messages = aiChatHistory.length ? aiChatHistory : [{
+    role: 'assistant',
+    content: '你好，我是服务设计 AI 助教。你可以问我：下一步做什么、Kano/AHP/TRIZ/TOPSIS 怎么用、旅程图怎么填、报告怎么写。',
+  }];
+  els.aiChatMessages.innerHTML = messages.map((item) => `
+    <article class="ai-chat-message ${item.role === 'user' ? 'user' : 'assistant'}">
+      <b>${item.role === 'user' ? '我' : 'AI 助教'}</b>
+      <p>${escapeHtml(item.content)}</p>
+    </article>
+  `).join('');
+  els.aiChatMessages.scrollTop = els.aiChatMessages.scrollHeight;
 }
 
 async function requestModelText(prompt) {
