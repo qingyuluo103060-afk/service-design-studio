@@ -11,6 +11,12 @@ const server = await startServer({
   rootDir: fileURLToPath(new URL('..', import.meta.url)),
   dataDir: tempDir,
   silent: true,
+  fetchImpl: async () => new Response(JSON.stringify({
+    choices: [{ message: { content: '连接成功' } }],
+  }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  }),
 });
 
 try {
@@ -58,6 +64,19 @@ try {
   const page = await fetch(`${baseUrl}/index.html`);
   assert.equal(page.status, 200);
   assert.ok((await page.text()).includes('服务设计智慧工作台'));
+
+  const llmCheck = await fetchJson(`${baseUrl}/api/llm/check`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      provider: 'custom',
+      apiKey: 'test-key',
+      baseUrl: 'https://example.test/v1',
+      model: 'test-model',
+    }),
+  });
+  assert.equal(llmCheck.ok, true);
+  assert.equal(llmCheck.content, '连接成功');
 
   console.log('server tests passed');
 } finally {
