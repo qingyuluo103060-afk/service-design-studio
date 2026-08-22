@@ -3149,3 +3149,274 @@ h3 {
     grid-template-columns: 1fr;
   }
 }
+
+/* 2026-08 hierarchy cleanup */
+:root {
+  --font-title: 22px;
+  --font-section: 18px;
+  --font-card: 15px;
+  --font-body: 14px;
+  --font-small: 12px;
+}
+
+body {
+  font-size: var(--font-body);
+  line-height: 1.62;
+}
+
+h1 {
+  font-size: var(--font-title);
+  line-height: 1.22;
+  font-weight: 900;
+}
+
+h2 {
+  font-size: var(--font-section);
+  line-height: 1.28;
+  font-weight: 850;
+}
+
+h3 {
+  font-size: var(--font-card);
+  line-height: 1.35;
+  font-weight: 800;
+}
+
+.eyebrow,
+small,
+.muted,
+.field-hint {
+  font-size: var(--font-small);
+}
+
+.module-sidebar {
+  background: linear-gradient(180deg, #f8fcfd, #eef8f9);
+}
+
+.module-nav {
+  gap: 8px;
+}
+
+.module-group {
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(8, 86, 101, 0.05);
+}
+
+.module-group summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 11px;
+  font-size: 12px;
+}
+
+.module-group summary span {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 10px;
+  color: #fff;
+  background: linear-gradient(135deg, #0b7486, #12a7af);
+}
+
+.module-link {
+  grid-template-columns: 30px 1fr;
+  gap: 9px;
+  padding: 9px;
+  border-radius: 12px;
+}
+
+.module-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 11px;
+  font-size: 12px;
+}
+
+.module-link strong {
+  font-size: 13px;
+}
+
+.module-link small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.workspace-main {
+  gap: 14px;
+}
+
+.workspace-module.active {
+  gap: 14px;
+}
+
+.panel,
+.visual-card {
+  border-radius: 14px;
+}
+
+.panel-title {
+  align-items: start;
+}
+
+.method-process-board {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px dashed rgba(12, 96, 112, 0.22);
+}
+
+.method-process-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.method-process-head h3 {
+  margin: 0;
+}
+
+.method-process-head span {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: #075869;
+  background: #daf4f7;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.method-process-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.method-process-card {
+  padding: 16px;
+  border: 1px solid rgba(12, 96, 112, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.current-method-panel {
+  border: 1px solid rgba(12, 96, 112, 0.14);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(236, 250, 251, 0.92)),
+    radial-gradient(circle at 96% 10%, rgba(255, 199, 95, 0.18), transparent 26%);
+}
+
+.current-method-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.2fr) repeat(2, minmax(180px, 0.8fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.current-method-main h2 {
+  margin: 0 0 6px;
+}
+
+.current-method-main p:last-child {
+  margin: 0;
+  color: #486671;
+}
+
+.current-method-check {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.current-method-check b {
+  flex-basis: 100%;
+  color: #075869;
+}
+
+.current-method-check span {
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: rgba(16, 178, 188, 0.12);
+  color: #0d5663;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.method-process-title span {
+  display: inline-flex;
+  margin-bottom: 7px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #8b5b00;
+  background: #fff1c7;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.method-process-title h3 {
+  margin: 0 0 6px;
+}
+
+.method-mini-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 12px 0;
+}
+
+.method-mini-list b,
+.method-mini-list small {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #edf8fa;
+}
+
+.method-mini-list b {
+  color: #075869;
+}
+
+.method-process-card ol {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 14px;
+  padding-left: 22px;
+}
+
+.method-template-table {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), minmax(120px, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: rgba(12, 96, 112, 0.14);
+}
+
+.method-template-table b,
+.method-template-table span {
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.95);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.method-template-table b {
+  color: #075869;
+  background: #daf4f7;
+}
+
+@media (max-width: 900px) {
+  .method-template-table {
+    grid-template-columns: 1fr;
+  }
+
+  .method-process-head {
+    display: grid;
+  }
+
+  .current-method-grid {
+    grid-template-columns: 1fr;
+  }
+}
