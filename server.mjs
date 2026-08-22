@@ -198,13 +198,13 @@ async function routeRequest(request, response, context) {
   }
 
   if (url.pathname === '/api/auth/register' && request.method === 'POST') {
-    const result = await registerUser(context.dataDir, context.sessions, JSON.parse(await readBody(request) || '{}'));
+    const result = await registerUser(context.dataDir, context.env, context.sessions, JSON.parse(await readBody(request) || '{}'));
     sendJson(response, result.status || 200, withoutStatus(result));
     return;
   }
 
   if (url.pathname === '/api/auth/login' && request.method === 'POST') {
-    const result = await loginUser(context.dataDir, context.sessions, JSON.parse(await readBody(request) || '{}'));
+    const result = await loginUser(context.dataDir, context.env, context.sessions, JSON.parse(await readBody(request) || '{}'));
     sendJson(response, result.ok ? 200 : 401, result);
     return;
   }
@@ -230,7 +230,7 @@ async function routeRequest(request, response, context) {
 
   if (url.pathname === '/api/state' && request.method === 'GET') {
     if (!requireAccess(request, response, context)) return;
-    sendJson(response, 200, await readState(context.dataDir));
+    sendJson(response, 200, await readState(context.dataDir, context.env));
     return;
   }
 
@@ -239,7 +239,7 @@ async function routeRequest(request, response, context) {
     const body = await readBody(request);
     const state = JSON.parse(body || '{}');
     validateStateShape(state);
-    await writeState(context.dataDir, state);
+    await writeState(context.dataDir, state, context.env);
     sendJson(response, 200, { ok: true });
     return;
   }
@@ -248,6 +248,13 @@ async function routeRequest(request, response, context) {
     if (!requireAccess(request, response, context)) return;
     const body = JSON.parse(await readBody(request) || '{}');
     sendJson(response, 200, await callModel(body, context.env, context.fetchImpl));
+    return;
+  }
+
+  if (url.pathname === '/api/literature/search' && request.method === 'POST') {
+    if (!requireAccess(request, response, context)) return;
+    const body = JSON.parse(await readBody(request) || '{}');
+    sendJson(response, 200, await searchLiterature(body, context.fetchImpl));
     return;
   }
 
@@ -379,12 +386,85 @@ function getPayloadBaseUrl(payload) {
   return value;
 }
 
+async function searchLiterature(payload, fetchImpl) {
+  const query = String(payload.query || '').trim();
+  const limit = Math.max(1, Math.min(12, Number(payload.limit) || 6));
+  if (!query) return { ok: false, error: '请先提供检索关键词或项目选题', items: [] };
+  const encoded = encodeURIComponent(query.slice(0, 240));
+  const [openAlex, crossref] = await Promise.allSettled([
+    fetchOpenAlexWorks(fetchImpl, encoded, limit),
+    fetchCrossrefWorks(fetchImpl, encoded, limit),
+  ]);
+  const items = [
+    ...(openAlex.status === 'fulfilled' ? openAlex.value : []),
+    ...(crossref.status === 'fulfilled' ? crossref.value : []),
+  ];
+  return {
+    ok: true,
+    query,
+    sources: ['OpenAlex', 'Crossref'],
+    items: dedupeLiterature(items).slice(0, limit * 2),
+  };
+}
+
+async function fetchOpenAlexWorks(fetchImpl, encodedQuery, limit) {
+  const response = await fetchImpl(`https://api.openalex.org/works?search=${encodedQuery}&per-page=${limit}&sort=cited_by_count:desc`, {
+    headers: { accept: 'application/json' },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) return [];
+  return (data.results || []).map((item) => ({
+    source: 'OpenAlex',
+    title: String(item.title || ''),
+    year: item.publication_year || '',
+    venue: item.primary_location?.source?.display_name || item.host_venue?.display_name || '',
+    authors: (item.authorships || []).slice(0, 4).map((auth) => auth.author?.display_name).filter(Boolean).join('; '),
+    doi: normalizeDoi(item.doi),
+    citedBy: Number(item.cited_by_count) || 0,
+    url: item.doi || item.id || '',
+    abstract: '',
+  })).filter((item) => item.title);
+}
+
+async function fetchCrossrefWorks(fetchImpl, encodedQuery, limit) {
+  const response = await fetchImpl(`https://api.crossref.org/works?query.bibliographic=${encodedQuery}&rows=${limit}&sort=is-referenced-by-count&order=desc`, {
+    headers: { accept: 'application/json' },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) return [];
+  return (data.message?.items || []).map((item) => ({
+    source: 'Crossref',
+    title: Array.isArray(item.title) ? String(item.title[0] || '') : String(item.title || ''),
+    year: item.published?.['date-parts']?.[0]?.[0] || item.issued?.['date-parts']?.[0]?.[0] || '',
+    venue: Array.isArray(item['container-title']) ? String(item['container-title'][0] || '') : '',
+    authors: (item.author || []).slice(0, 4).map((author) => [author.given, author.family].filter(Boolean).join(' ')).filter(Boolean).join('; '),
+    doi: normalizeDoi(item.DOI),
+    citedBy: Number(item['is-referenced-by-count']) || 0,
+    url: item.URL || (item.DOI ? `https://doi.org/${item.DOI}` : ''),
+    abstract: String(item.abstract || '').replace(/<[^>]+>/g, ''),
+  })).filter((item) => item.title);
+}
+
+function dedupeLiterature(items) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = (item.doi || item.title).toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => (b.citedBy || 0) - (a.citedBy || 0));
+}
+
+function normalizeDoi(value) {
+  return String(value || '').replace(/^https?:\/\/doi\.org\//i, '').trim();
+}
+
 function getRequestHeader(request, headerName) {
   const value = request.headers[headerName.toLowerCase()];
   return Array.isArray(value) ? value[0] : value;
 }
 
-async function registerUser(dataDir, sessions, payload) {
+async function registerUser(dataDir, env, sessions, payload) {
   const role = normalizeRole(payload.role);
   const studentId = normalizeStudentId(payload.studentId);
   const teacherId = normalizeTeacherId(payload.teacherId);
@@ -400,7 +480,7 @@ async function registerUser(dataDir, sessions, payload) {
     return { status: 400, ok: false, error: '请填写有效教师工号。工号需为 8 位数字，格式为 021XXXXX。' };
   }
 
-  const users = await readUsers(dataDir);
+  const users = await readUsers(dataDir, env);
   if (role === 'student' && users.some((user) => user.role !== 'teacher' && user.studentId === studentId)) {
     return { status: 409, ok: false, error: '该学号已注册，请直接登录' };
   }
@@ -419,18 +499,18 @@ async function registerUser(dataDir, sessions, payload) {
     passwordHash: hashPassword(password),
   };
   users.push(user);
-  await writeUsers(dataDir, users);
+  await writeUsers(dataDir, users, env);
   const publicUser = toPublicUser(user);
   const token = createSession(sessions, publicUser);
   return { ok: true, token, user: publicUser };
 }
 
-async function loginUser(dataDir, sessions, payload) {
+async function loginUser(dataDir, env, sessions, payload) {
   const role = normalizeRole(payload.role);
   const studentId = normalizeStudentId(payload.studentId);
   const teacherId = normalizeTeacherId(payload.teacherId);
   const password = String(payload.password || '');
-  const users = await readUsers(dataDir);
+  const users = await readUsers(dataDir, env);
   const user = role === 'teacher'
     ? users.find((item) => item.role === 'teacher' && item.teacherId === teacherId)
     : users.find((item) => item.role !== 'teacher' && item.studentId === studentId);
@@ -441,7 +521,9 @@ async function loginUser(dataDir, sessions, payload) {
   return { ok: true, token: createSession(sessions, publicUser), user: publicUser };
 }
 
-async function readUsers(dataDir) {
+async function readUsers(dataDir, env = process.env) {
+  const stored = await readJsonStore(env, 'users');
+  if (stored) return stored;
   try {
     return JSON.parse(await readFile(join(dataDir, USERS_FILE), 'utf8'));
   } catch {
@@ -449,7 +531,8 @@ async function readUsers(dataDir) {
   }
 }
 
-async function writeUsers(dataDir, users) {
+async function writeUsers(dataDir, users, env = process.env) {
+  if (await writeJsonStore(env, 'users', users)) return;
   await mkdir(dataDir, { recursive: true });
   await writeFile(join(dataDir, USERS_FILE), JSON.stringify(users, null, 2), 'utf8');
 }
@@ -517,16 +600,19 @@ function withoutStatus(result) {
   return payload;
 }
 
-async function readState(dataDir) {
+async function readState(dataDir, env = process.env) {
+  const stored = await readJsonStore(env, 'classroom-state');
+  if (stored) return stored;
   try {
     return JSON.parse(await readFile(join(dataDir, STATE_FILE), 'utf8'));
   } catch {
-    await writeState(dataDir, DEFAULT_STATE);
+    await writeState(dataDir, DEFAULT_STATE, env);
     return DEFAULT_STATE;
   }
 }
 
-async function writeState(dataDir, state) {
+async function writeState(dataDir, state, env = process.env) {
+  if (await writeJsonStore(env, 'classroom-state', state)) return;
   await mkdir(dataDir, { recursive: true });
   await writeFile(join(dataDir, STATE_FILE), JSON.stringify(state, null, 2), 'utf8');
 }
@@ -535,6 +621,55 @@ function validateStateShape(state) {
   if (!state || !Array.isArray(state.groups) || state.groups.length === 0) {
     throw new Error('课堂数据必须包含至少一个小组。');
   }
+}
+
+let pgPoolPromise = null;
+
+async function readJsonStore(env, key) {
+  const pool = await getPostgresPool(env);
+  if (!pool) return null;
+  await ensureStoreTable(pool);
+  const result = await pool.query('select payload from service_design_store where key = $1', [key]);
+  return result.rows[0]?.payload || null;
+}
+
+async function writeJsonStore(env, key, payload) {
+  const pool = await getPostgresPool(env);
+  if (!pool) return false;
+  await ensureStoreTable(pool);
+  await pool.query(
+    `insert into service_design_store (key, payload, updated_at)
+     values ($1, $2::jsonb, now())
+     on conflict (key) do update set payload = excluded.payload, updated_at = now()`,
+    [key, JSON.stringify(payload)],
+  );
+  return true;
+}
+
+async function getPostgresPool(env) {
+  const connectionString = String(env.DATABASE_URL || '').trim();
+  if (!connectionString) return null;
+  if (!pgPoolPromise) {
+    pgPoolPromise = import('pg')
+      .then(({ Pool }) => new Pool({
+        connectionString,
+        ssl: String(env.DATABASE_SSL || 'true').toLowerCase() === 'true'
+          ? { rejectUnauthorized: false }
+          : false,
+      }))
+      .catch(() => null);
+  }
+  return pgPoolPromise;
+}
+
+async function ensureStoreTable(pool) {
+  await pool.query(`
+    create table if not exists service_design_store (
+      key text primary key,
+      payload jsonb not null,
+      updated_at timestamptz not null default now()
+    )
+  `);
 }
 
 async function serveStatic(request, response, rootDir, pathname) {
