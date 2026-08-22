@@ -234,6 +234,15 @@ export const COURSE_MODULES = [
     roles: ['student', 'teacher'],
   },
   {
+    id: 'journey',
+    group: '成果表达',
+    icon: '旅',
+    title: '用户旅程图',
+    description: '把调研证据转化为阶段、触点、情绪曲线、痛点和机会点。',
+    stageId: 'define',
+    roles: ['student', 'teacher'],
+  },
+  {
     id: 'concepts',
     group: '方案生成',
     icon: '案',
@@ -369,6 +378,11 @@ export function createEmptyProject() {
     needs: [],
     concepts: [],
     feedback: [],
+    journey: [],
+    triz: [],
+    ahpAnalysis: null,
+    topsisAnalysis: null,
+    codingAnalysis: null,
     taskStatus: {},
     literatureReview: {
       query: '',
@@ -520,6 +534,102 @@ export function calculateTopsisAnalysis(items, criteria) {
   return { ranked, normalized, weightedRows, idealBest, idealWorst };
 }
 
+export function parseCsvTable(text = '') {
+  const rows = String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map(parseCsvLineCore);
+  if (!rows.length) return { headers: [], rows: [] };
+  return { headers: rows[0].map((cell) => String(cell).trim()), rows: rows.slice(1) };
+}
+
+export function parseAhpMatrixCsv(text = '') {
+  const table = parseCsvTable(text);
+  if (!table.rows.length) return { labels: [], matrix: [] };
+  const labels = table.headers.slice(1);
+  const matrix = table.rows.map((row) => row.slice(1, labels.length + 1).map((cell) => Number(cell) || 0));
+  return { labels, matrix };
+}
+
+export function parseTopsisMatrixCsv(text = '') {
+  const table = parseCsvTable(text);
+  if (!table.rows.length) return { items: [], criteria: [] };
+  const headers = table.headers;
+  const criteria = headers.slice(1).map((header) => ({
+    key: header,
+    label: header,
+    weight: 1 / Math.max(1, headers.length - 1),
+    direction: /风险|成本|费用|时长|负担|risk|cost/i.test(header) ? 'cost' : 'benefit',
+  }));
+  const items = table.rows.map((row) => {
+    const item = { title: row[0] || '未命名方案' };
+    criteria.forEach((criterion, index) => {
+      item[criterion.key] = Number(row[index + 1]) || 0;
+    });
+    return item;
+  });
+  return { items, criteria };
+}
+
+export function buildJourneyRows(project = {}) {
+  const stored = Array.isArray(project.journey) ? project.journey : [];
+  if (stored.length) return stored;
+  const needs = Array.isArray(project.needs) ? project.needs : [];
+  const evidence = STAGES.flatMap((stage) => project.stages?.[stage.id]?.evidence || []);
+  const defaultStages = ['进入服务', '信息理解', '等待/办理', '结果确认', '反馈迭代'];
+  return defaultStages.map((stage, index) => ({
+    stage,
+    touchpoint: ['入口/页面', '导引提示', '服务人员/系统', '结果凭证', '反馈渠道'][index],
+    action: ['寻找入口', '理解规则', '完成核心任务', '确认是否成功', '提出反馈'][index],
+    emotion: [2, 3, 4, 3, 4][index],
+    pain: needs[index % Math.max(1, needs.length)]?.title || ['入口不清晰', '信息负荷高', '等待焦虑', '解释不足', '反馈无闭环'][index],
+    opportunity: ['明确入口', '分层说明', '状态可视化', '结果解释', '形成迭代记录'][index],
+    evidence: evidence[index % Math.max(1, evidence.length)]?.title || '待补充证据',
+  }));
+}
+
+export function buildTrizRows(project = {}) {
+  const stored = Array.isArray(project.triz) ? project.triz : [];
+  if (stored.length) return stored;
+  const needs = Array.isArray(project.needs) && project.needs.length ? project.needs.slice(0, 5) : [
+    { title: '提升信息清晰度' },
+    { title: '降低等待焦虑' },
+    { title: '增强协同效率' },
+  ];
+  const principles = ['分割', '预先作用', '反馈', '动态化', '中介物', '局部质量'];
+  return needs.map((need, index) => ({
+    need: need.title,
+    improve: index % 2 ? '降低用户负担' : '提升服务清晰度',
+    worsen: index % 2 ? '增加服务人员工作量' : '增加流程复杂度',
+    principle: principles[index % principles.length],
+    concept: `${principles[index % principles.length]}：围绕“${need.title}”重构触点`,
+    evidence: '来自 Kano/AHP 关键需求',
+  }));
+}
+
+function parseCsvLineCore(line) {
+  const cells = [];
+  let value = '';
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"' && line[index + 1] === '"') {
+      value += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === ',' && !quoted) {
+      cells.push(value);
+      value = '';
+    } else {
+      value += char;
+    }
+  }
+  cells.push(value);
+  return cells;
+}
+
 export function buildMethodTaskPlan(project = {}) {
   const taskStatus = project.taskStatus && typeof project.taskStatus === 'object' ? project.taskStatus : {};
   return METHOD_TASK_CHAIN.map((task) => {
@@ -562,8 +672,8 @@ function isMethodTaskAutoReady(taskId, project = {}) {
   if (taskId === 'research') return empathyEvidence.filter((item) => item.title && item.content).length >= 2;
   if (taskId === 'coding') return defineEvidence.filter((item) => item.title && item.content).length >= 1;
   if (taskId === 'kanoAhp') return needs.length >= 2;
-  if (taskId === 'triz') return concepts.length >= 2;
-  if (taskId === 'topsisBlueprint') return concepts.length >= 2 && prototypeEvidence.length >= 1;
+  if (taskId === 'triz') return concepts.length >= 2 || (project.triz || []).length >= 1;
+  if (taskId === 'topsisBlueprint') return (concepts.length >= 2 || (project.topsisAnalysis?.ranked || []).length >= 1) && (prototypeEvidence.length >= 1 || (project.journey || []).length >= 1);
   if (taskId === 'testingReport') return feedback.length >= 1 || prototypeEvidence.length >= 2;
   return false;
 }
@@ -822,6 +932,30 @@ function normalizeProject(project = {}) {
       }))
     : [];
   normalized.feedback = Array.isArray(project.feedback) ? project.feedback : [];
+  normalized.journey = Array.isArray(project.journey)
+    ? project.journey.map((item) => ({
+        stage: String(item.stage || ''),
+        touchpoint: String(item.touchpoint || ''),
+        action: String(item.action || ''),
+        emotion: Number(item.emotion) || 3,
+        pain: String(item.pain || ''),
+        opportunity: String(item.opportunity || ''),
+        evidence: String(item.evidence || ''),
+      }))
+    : [];
+  normalized.triz = Array.isArray(project.triz)
+    ? project.triz.map((item) => ({
+        need: String(item.need || ''),
+        improve: String(item.improve || ''),
+        worsen: String(item.worsen || ''),
+        principle: String(item.principle || ''),
+        concept: String(item.concept || ''),
+        evidence: String(item.evidence || ''),
+      }))
+    : [];
+  normalized.ahpAnalysis = project.ahpAnalysis || null;
+  normalized.topsisAnalysis = project.topsisAnalysis || null;
+  normalized.codingAnalysis = project.codingAnalysis || null;
   normalized.taskStatus = project.taskStatus && typeof project.taskStatus === 'object'
     ? Object.fromEntries(Object.entries(project.taskStatus).map(([key, value]) => [
         key,
