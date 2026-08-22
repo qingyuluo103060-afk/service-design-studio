@@ -28,23 +28,38 @@ try {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
+      role: 'student',
       name: '陈一',
-      email: 'student@example.com',
+      studentId: '210117001',
       password: 'pass1234',
       className: '产品设计1班',
     }),
   });
   assert.equal(registerResult.ok, true);
-  assert.equal(registerResult.user.email, 'student@example.com');
+  assert.equal(registerResult.user.role, 'student');
+  assert.equal(registerResult.user.studentId, '210117001');
   assert.ok(registerResult.token.length > 20);
   assert.equal(JSON.stringify(registerResult).includes('pass1234'), false);
+
+  const invalidStudentId = await fetch(`${baseUrl}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      role: 'student',
+      name: '格式错误学生',
+      studentId: '220117001',
+      password: 'pass1234',
+    }),
+  });
+  assert.equal(invalidStudentId.status, 400);
 
   const duplicate = await fetch(`${baseUrl}/api/auth/register`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
+      role: 'student',
       name: '陈一',
-      email: 'student@example.com',
+      studentId: '210117001',
       password: 'pass1234',
     }),
   });
@@ -53,15 +68,65 @@ try {
   const loginResult = await fetchJson(`${baseUrl}/api/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: 'student@example.com', password: 'pass1234' }),
+    body: JSON.stringify({ role: 'student', studentId: '210117001', password: 'pass1234' }),
   });
   assert.equal(loginResult.ok, true);
   assert.equal(loginResult.user.name, '陈一');
+  assert.equal(loginResult.user.role, 'student');
 
   const me = await fetchJson(`${baseUrl}/api/me`, {
     headers: { authorization: `Bearer ${loginResult.token}` },
   });
   assert.equal(me.user.className, '产品设计1班');
+  assert.equal(me.user.studentId, '210117001');
+  assert.equal(me.user.role, 'student');
+
+  const teacherRegisterResult = await fetchJson(`${baseUrl}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      role: 'teacher',
+      name: '教师A',
+      teacherId: '02112345',
+      password: 'pass1234',
+    }),
+  });
+  assert.equal(teacherRegisterResult.ok, true);
+  assert.equal(teacherRegisterResult.user.role, 'teacher');
+  assert.equal(teacherRegisterResult.user.teacherId, '02112345');
+  assert.equal(teacherRegisterResult.user.studentId, '');
+
+  const invalidTeacherId = await fetch(`${baseUrl}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      role: 'teacher',
+      name: '格式错误教师',
+      teacherId: '02212345',
+      password: 'pass1234',
+    }),
+  });
+  assert.equal(invalidTeacherId.status, 400);
+
+  const duplicateTeacher = await fetch(`${baseUrl}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      role: 'teacher',
+      name: '教师A',
+      teacherId: '02112345',
+      password: 'pass1234',
+    }),
+  });
+  assert.equal(duplicateTeacher.status, 409);
+
+  const teacherLoginResult = await fetchJson(`${baseUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ role: 'teacher', teacherId: '02112345', password: 'pass1234' }),
+  });
+  assert.equal(teacherLoginResult.ok, true);
+  assert.equal(teacherLoginResult.user.role, 'teacher');
 
   const authorizedState = await fetchJson(`${baseUrl}/api/state`, {
     headers: { authorization: `Bearer ${loginResult.token}` },
