@@ -7,7 +7,6 @@ import { startServer } from '../server.mjs';
 
 const env = {
   APP_ACCESS_CODE: 'class-2026',
-  DEEPSEEK_API_KEY: 'test-key',
   DEEPSEEK_MODEL: 'deepseek-test',
 };
 
@@ -39,9 +38,9 @@ try {
   assert.equal(config.authRequired, true);
   assert.deepEqual(
     config.providers.find((provider) => provider.id === 'deepseek'),
-    { id: 'deepseek', name: 'DeepSeek', configured: true },
+    { id: 'deepseek', name: 'DeepSeek', configured: false, supportsUserKey: true },
   );
-  assert.equal(JSON.stringify(config).includes('test-key'), false);
+  assert.equal(JSON.stringify(config).includes('student-key'), false);
 
   const blockedState = await fetch(`${baseUrl}/api/state`);
   assert.equal(blockedState.status, 401);
@@ -58,7 +57,7 @@ try {
   });
   assert.equal(blockedModel.status, 401);
 
-  const modelResult = await fetchJson(`${baseUrl}/api/llm/chat`, {
+  const missingStudentKey = await fetchJson(`${baseUrl}/api/llm/chat`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -67,6 +66,22 @@ try {
     body: JSON.stringify({
       provider: 'deepseek',
       prompt: '生成调研建议',
+    }),
+  });
+  assert.equal(missingStudentKey.ok, false);
+  assert.equal(capturedRequests.length, 0);
+
+  const modelResult = await fetchJson(`${baseUrl}/api/llm/chat`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-access-code': 'class-2026',
+    },
+    body: JSON.stringify({
+      provider: 'deepseek',
+      apiKey: 'student-key',
+      model: 'deepseek-student',
+      prompt: '生成调研建议',
       context: { stage: '探索与共情', projectTitle: '医院导诊服务优化' },
     }),
   });
@@ -74,8 +89,8 @@ try {
   assert.equal(modelResult.content, '请先补充用户访谈样本量与关键洞察。');
   assert.equal(capturedRequests.length, 1);
   assert.equal(capturedRequests[0].url, 'https://api.deepseek.com/chat/completions');
-  assert.equal(capturedRequests[0].options.headers.authorization, 'Bearer test-key');
-  assert.equal(JSON.parse(capturedRequests[0].options.body).model, 'deepseek-test');
+  assert.equal(capturedRequests[0].options.headers.authorization, 'Bearer student-key');
+  assert.equal(JSON.parse(capturedRequests[0].options.body).model, 'deepseek-student');
 
   console.log('public api tests passed');
 } finally {
