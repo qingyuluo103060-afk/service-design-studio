@@ -338,6 +338,7 @@ export function validateClassroomState(input) {
               className: String(member.className || '').trim(),
             })).filter((member) => member.name)
           : [],
+        roles: group.roles && typeof group.roles === 'object' ? { ...group.roles } : {},
         project,
       };
     })
