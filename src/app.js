@@ -5,6 +5,9 @@
   calculateStageProgress,
   classifyKano,
   COURSE_MODULES,
+  METHOD_TASK_CHAIN,
+  buildMethodTaskPlan,
+  summarizeMethodTaskProgress,
   createGroups,
   extractKeywords,
   getStakeholderVisuals,
@@ -72,8 +75,14 @@ const els = {
   dashboardEvidence: document.querySelector('#dashboardEvidence'),
   dashboardNeeds: document.querySelector('#dashboardNeeds'),
   dashboardRisk: document.querySelector('#dashboardRisk'),
+  methodChainSummary: document.querySelector('#methodChainSummary'),
+  methodTaskBoard: document.querySelector('#methodTaskBoard'),
   projectTitle: document.querySelector('#projectTitle'),
   projectScenario: document.querySelector('#projectScenario'),
+  generateTaskPlan: document.querySelector('#generateTaskPlan'),
+  recommendLiterature: document.querySelector('#recommendLiterature'),
+  taskPlanPreview: document.querySelector('#taskPlanPreview'),
+  literatureResult: document.querySelector('#literatureResult'),
   stageTitle: document.querySelector('#stageTitle'),
   stageFocus: document.querySelector('#stageFocus'),
   methodToolkit: document.querySelector('#methodToolkit'),
@@ -287,6 +296,10 @@ function bindEvents() {
   els.evidenceList.addEventListener('input', updateEvidence);
   els.needList.addEventListener('input', updateNeeds);
   els.conceptList.addEventListener('input', updateConcepts);
+  els.generateTaskPlan?.addEventListener('click', generateTaskPlan);
+  els.recommendLiterature?.addEventListener('click', recommendLiterature);
+  els.methodTaskBoard?.addEventListener('click', handleMethodTaskClick);
+  els.taskPlanPreview?.addEventListener('click', handleMethodTaskClick);
 
   els.importData.addEventListener('click', () => {
     els.importFile.click();
@@ -747,6 +760,7 @@ function render() {
   renderStages();
   renderGroups();
   renderProject();
+  renderMethodChain();
   renderToolkit();
   renderStage();
   renderEvidence();
@@ -873,6 +887,7 @@ function buildAvatarText(name) {
 
 function renderLight() {
   renderHeader();
+  renderMethodChain();
   renderVisuals();
   renderLiveRail();
   renderAssistant();
@@ -929,6 +944,143 @@ function renderProject() {
   const project = activeProject();
   els.projectTitle.value = project.title;
   els.projectScenario.value = project.scenario;
+  if (els.literatureResult) {
+    els.literatureResult.textContent = project.literatureReview?.result
+      || '选题确定后，可使用个人大模型 API 生成相关文献方向、检索关键词和研究空白分析。';
+  }
+}
+
+function renderMethodChain() {
+  const project = activeProject();
+  const plan = buildMethodTaskPlan(project);
+  const summary = summarizeMethodTaskProgress(plan);
+  if (els.methodChainSummary) {
+    els.methodChainSummary.textContent = `${summary.completed}/${summary.total} · ${summary.percent}%`;
+  }
+  const markup = plan.map((task, index) => renderMethodTaskCard(task, index)).join('');
+  if (els.methodTaskBoard) els.methodTaskBoard.innerHTML = markup;
+  if (els.taskPlanPreview) els.taskPlanPreview.innerHTML = markup;
+}
+
+function renderMethodTaskCard(task, index) {
+  const stateClass = task.completed ? ' completed' : task.autoReady ? ' ready' : '';
+  const tools = task.tools.map((tool) => `<span>${escapeHtml(tool)}</span>`).join('');
+  const outputs = task.outputs.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+  return `
+    <article class="method-task-card${stateClass}">
+      <div class="method-task-head">
+        <span class="method-task-index">${index + 1}</span>
+        <div>
+          <small>${escapeHtml(task.phase)} · ${escapeHtml(task.method)}</small>
+          <h3>${escapeHtml(task.title)}</h3>
+        </div>
+        <button type="button" class="ghost" data-method-task="${task.id}">
+          ${task.manualCompleted ? '取消标记' : task.completed ? '已完成' : '标记完成'}
+        </button>
+      </div>
+      <p>${task.actions.map((item) => escapeHtml(item)).join('；')}</p>
+      <div class="method-tool-row">${tools}</div>
+      <ul>${outputs}</ul>
+      ${task.note ? `<p class="method-note">${escapeHtml(task.note)}</p>` : ''}
+    </article>
+  `;
+}
+
+function handleMethodTaskClick(event) {
+  const button = event.target.closest('[data-method-task]');
+  if (!button) return;
+  const project = activeProject();
+  const taskId = button.dataset.methodTask;
+  const current = project.taskStatus?.[taskId] || {};
+  project.taskStatus = project.taskStatus || {};
+  project.taskStatus[taskId] = {
+    completed: !current.completed,
+    note: current.completed ? '' : '学生手动确认本阶段材料已完成。',
+    updatedAt: new Date().toISOString(),
+  };
+  saveState();
+  render();
+}
+
+function generateTaskPlan() {
+  const project = activeProject();
+  project.taskStatus = project.taskStatus || {};
+  project.taskStatus.topic = {
+    completed: Boolean(project.title && project.scenario),
+    note: '已根据当前选题生成课程方法链任务。',
+    updatedAt: new Date().toISOString(),
+  };
+  saveState();
+  render();
+  activeModuleId = 'overview';
+  render();
+}
+
+async function recommendLiterature() {
+  const project = activeProject();
+  const query = `${project.title}\n${project.scenario}`.trim();
+  if (!query || project.title === '未命名服务设计项目') {
+    els.literatureResult.textContent = '请先填写具体项目主题和真实服务场景，再进行文献推荐。';
+    return;
+  }
+  els.recommendLiterature.disabled = true;
+  els.literatureResult.textContent = '正在生成文献检索关键词、研究方向和研究空白分析...';
+  const prompt = buildLiteraturePrompt(project);
+  try {
+    const aiText = await requestModelText(prompt);
+    saveLiteratureResult(project, query, aiText);
+  } catch (error) {
+    saveLiteratureResult(project, query, `${buildLocalLiteratureReview(project)}\n\n未能调用个人大模型，已生成本地文献分析模板。原因：${error.message}`);
+  } finally {
+    els.recommendLiterature.disabled = false;
+    saveState();
+    render();
+  }
+}
+
+function saveLiteratureResult(project, query, result) {
+  project.literatureReview = {
+    query,
+    result,
+    updatedAt: new Date().toISOString(),
+  };
+  project.taskStatus = project.taskStatus || {};
+  project.taskStatus.literature = {
+    completed: true,
+    note: '已形成文献推荐与研究空白分析。',
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function buildLiteraturePrompt(project) {
+  return [
+    '你是服务设计课程的研究助教。请围绕学生选题生成文献检索与研究空白分析，必须服务于后续调研、Kano-AHP、TRIZ、TOPSIS和服务蓝图，不要直接替学生给最终方案。',
+    '',
+    `项目主题：${project.title}`,
+    `真实服务场景：${project.scenario}`,
+    '',
+    '请输出：',
+    '1. 中文与英文检索关键词各8-12个。',
+    '2. 推荐检索方向或文献主题，不要编造具体不存在的论文题名、作者、DOI。',
+    '3. 已有研究可能关注什么。',
+    '4. 本项目可切入的研究空白或设计机会。',
+    '5. 后续调研应优先验证的3-5个问题。',
+    '6. 如何把文献启发接入 Kano-AHP-TRIZ-TOPSIS 方法链。',
+  ].join('\n');
+}
+
+function buildLocalLiteratureReview(project) {
+  const keywords = extractKeywords(`${project.title} ${project.scenario}`).slice(0, 8).map((item) => item.word);
+  const base = keywords.length ? keywords.join('、') : '服务触点、用户体验、服务质量、需求分类、方案评价';
+  return [
+    '文献推荐与研究空白分析',
+    '',
+    `检索关键词建议：${base}、service design、user experience、service blueprint、Kano model、AHP、TRIZ、TOPSIS。`,
+    '推荐检索方向：服务设计流程、目标用户体验痛点、服务质量评价、需求分类与权重、创新方案生成、方案多准则评价。',
+    '可能研究空白：现有研究常停留在体验问题描述或单一方法应用，本项目可强调“调研证据-需求分类-权重排序-创新方案-方案评价-服务蓝图”的闭环。',
+    '后续调研问题：目标用户在关键触点遇到什么障碍？哪些需求是基本型、期望型或魅力型？哪些服务矛盾阻碍体验提升？用户如何评价备选方案？',
+    '方法链接入：先用调研材料提取需求，再用 Kano 分类和 AHP 权重筛选关键需求，用 TRIZ 转化为方案，最后用 TOPSIS 排序并沉淀服务蓝图。',
+  ].join('\n');
 }
 
 function renderStage() {
@@ -1686,19 +1838,27 @@ function buildProjectReport(project) {
   const progress = calculateStageProgress(project);
   const keywords = extractKeywords(`${project.title} ${project.scenario}`).slice(0, 8);
   const ranked = rankedConcepts();
+  const methodPlan = buildMethodTaskPlan(project);
+  const methodSummary = summarizeMethodTaskProgress(methodPlan);
+  const methodLines = methodPlan.map((task, index) => `${index + 1}. ${task.phase}：${task.title}（${task.completed ? '已完成' : '待完善'}）`).join('\n');
   return [
     `《服务设计》课程项目报告`,
     '',
     `一、项目主题：${project.title}`,
     `二、服务场景：${project.scenario}`,
-    `三、调研方法与原始证据：共记录 ${STAGES.reduce((sum, stage) => sum + (project.stages[stage.id]?.evidence?.length || 0), 0)} 条过程证据。`,
-    `四、用户画像与利益相关者：围绕目标用户、陪伴者、一线服务、管理者和平台/设备建立关系图。`,
-    `五、需求筛选：已记录 ${project.needs.length} 条需求，可结合 Kano/AHP 解释优先级。`,
-    `六、方案生成与筛选：已记录 ${project.concepts.length} 个方案，当前优先方案为 ${ranked[0]?.title || '待补充'}。`,
-    `七、服务蓝图：建议按用户行为、前台触点、后台支持、实体证据和失败点展开。`,
-    `八、测试与评估：当前整体闭环进度 ${progress.overall}%，需结合 SERVQUAL/TOPSIS 说明验证结果。`,
-    `九、关键词摘要：${keywords.map((item) => `${item.word}(${item.count})`).join('、') || '待补充'}`,
-    `十、反思与迭代：说明本轮设计的局限、数据不足和下一轮改进计划。`,
+    `三、方法链完成情况：${methodSummary.completed}/${methodSummary.total}，完成度 ${methodSummary.percent}%。`,
+    methodLines,
+    '',
+    `四、文献推荐与研究空白：${project.literatureReview?.result || '待补充。建议先完成一键文献推荐，再提炼研究空白。'}`,
+    `五、调研方法与原始证据：共记录 ${STAGES.reduce((sum, stage) => sum + (project.stages[stage.id]?.evidence?.length || 0), 0)} 条过程证据。`,
+    `六、访谈/问卷分析：建议按主题分析或扎根理论呈现编码过程，并说明需求如何从原始材料中产生。`,
+    `七、用户画像与利益相关者：围绕目标用户、陪伴者、一线服务、管理者和平台/设备建立关系图。`,
+    `八、需求筛选：已记录 ${project.needs.length} 条需求，应结合 Kano 分类和 AHP 权重解释优先级。`,
+    `九、TRIZ 方案生成：已记录 ${project.concepts.length} 个方案，应说明服务矛盾、创新原理和需求证据链。`,
+    `十、TOPSIS 方案筛选与服务蓝图：当前优先方案为 ${ranked[0]?.title || '待补充'}，建议按用户行为、前台触点、后台支持、实体证据和失败点展开蓝图。`,
+    `十一、测试与评估：当前整体闭环进度 ${progress.overall}%，需结合 SERVQUAL/TOPSIS 说明验证结果。`,
+    `十二、关键词摘要：${keywords.map((item) => `${item.word}(${item.count})`).join('、') || '待补充'}`,
+    `十三、反思与迭代：说明本轮设计的局限、数据不足和下一轮改进计划。`,
   ].join('\n');
 }
 
