@@ -1,4 +1,4 @@
-import {
+﻿import {
   STAGES,
   buildAssistantAdvice,
   calculateCompetencyProfile,
@@ -143,6 +143,24 @@ const els = {
   vizModal: document.querySelector('#vizModal'),
   vizModalTitle: document.querySelector('#vizModalTitle'),
   vizModalBody: document.querySelector('#vizModalBody'),
+  rawResearchData: document.querySelector('#rawResearchData'),
+  rawResearchFile: document.querySelector('#rawResearchFile'),
+  researchAnalysisPrompt: document.querySelector('#researchAnalysisPrompt'),
+  runResearchAnalysis: document.querySelector('#runResearchAnalysis'),
+  researchAnalysisResult: document.querySelector('#researchAnalysisResult'),
+  researchQuadrant: document.querySelector('#researchQuadrant'),
+  blueprintTemplate: document.querySelector('#blueprintTemplate'),
+  analyzeBlueprint: document.querySelector('#analyzeBlueprint'),
+  generateProjectReport: document.querySelector('#generateProjectReport'),
+  exportProjectPackage: document.querySelector('#exportProjectPackage'),
+  printProjectPdf: document.querySelector('#printProjectPdf'),
+  projectReportPreview: document.querySelector('#projectReportPreview'),
+  rubricText: document.querySelector('#rubricText'),
+  rubricFile: document.querySelector('#rubricFile'),
+  gradeComposition: document.querySelector('#gradeComposition'),
+  runSmartScore: document.querySelector('#runSmartScore'),
+  exportGradebook: document.querySelector('#exportGradebook'),
+  gradingTable: document.querySelector('#gradingTable'),
 };
 
 init();
@@ -336,8 +354,28 @@ function bindEvents() {
     if (event.key === 'Enter') unlockWithAccessCode();
   });
   els.generateWithModel.addEventListener('click', generateModelAdvice);
+  els.rawResearchFile?.addEventListener('change', () => readTextFileInto(els.rawResearchFile, els.rawResearchData));
+  els.rubricFile?.addEventListener('change', () => readTextFileInto(els.rubricFile, els.rubricText));
+  els.runResearchAnalysis?.addEventListener('click', runResearchAnalysis);
+  els.analyzeBlueprint?.addEventListener('click', () => openSmartAnalysis('blueprintTemplate'));
+  els.generateProjectReport?.addEventListener('click', generateProjectReport);
+  els.exportProjectPackage?.addEventListener('click', exportProjectPackage);
+  els.printProjectPdf?.addEventListener('click', printProjectPdf);
+  els.runSmartScore?.addEventListener('click', runSmartScore);
+  els.exportGradebook?.addEventListener('click', exportGradebook);
   els.body.addEventListener('mouseover', handleVisualizationHover);
+  els.body.addEventListener('mouseout', handleVisualizationLeave);
   els.body.addEventListener('click', handleVisualizationClick);
+}
+
+function readTextFileInto(fileInput, textArea) {
+  const file = fileInput?.files?.[0];
+  if (!file || !textArea) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    textArea.value = String(reader.result || '');
+  };
+  reader.readAsText(file, 'utf-8');
 }
 
 function updateEvidence(event) {
@@ -968,24 +1006,24 @@ function renderVisuals() {
       <button type="button" class="bubble-play" data-bubble-play>播放关键词</button>
       ${keywordBubbles.map((item, index) => {
         const detail = keywordEvidence(item.word, project);
-        const activeClass = lockedKeyword === item.word ? ' active' : '';
         return `
       <span
-        class="keyword-bubble${activeClass}"
+        class="keyword-bubble"
         data-tone="${item.tone}"
         data-keyword="${escapeHtml(item.word)}"
         data-count="${item.count}"
+        data-raw-count="${item.rawCount}"
         data-detail="${escapeHtml(detail)}"
         style="--size:${item.size}px;--x:${item.x}%;--y:${item.y}%;--delay:${index * -0.28}s"
-        title="${escapeHtml(item.word)}：${item.count}"
+        title="${escapeHtml(item.word)}：权重 ${item.count}"
       >
         <b>${escapeHtml(item.word)}</b>
         <small>${item.count}</small>
       </span>`;
       }).join('')}
-      <aside class="bubble-detail" id="bubbleDetail">${renderBubbleDetail(keywordBubbles[0], project)}</aside>
+      <aside class="bubble-detail" id="bubbleDetail" hidden></aside>
     `
-    : '<span class="keyword-bubble empty-bubble"><b>暂无关键词</b><small>0</small></span><aside class="bubble-detail">添加调研证据后，将显示关键词比重和背后材料。</aside>';
+    : '<span class="keyword-bubble empty-bubble"><b>暂无关键词</b><small>0</small></span><aside class="bubble-detail" hidden></aside>';
 
   const ranked = rankedConcepts();
   els.rankChart.innerHTML = ranked.length
@@ -997,8 +1035,11 @@ function renderVisuals() {
   renderStakeholderMap(project);
   renderKanoChart(project);
   renderSankeyChart(project);
+  renderBlueprintTemplate(project);
   renderStudentInsights(project);
   renderTeacherInsights();
+  renderResearchQuadrant(buildQuadrantPoints(project));
+  renderGradingTable();
   enhanceVisualCards();
 }
 
@@ -1023,14 +1064,23 @@ function renderFunnel(project) {
 function renderStakeholderMap(project) {
   if (!els.stakeholderMap) return;
   const scenario = `${project.title} ${project.scenario}`;
-  els.stakeholderMap.innerHTML = getStakeholderVisuals().map((item, index) => `
-    <div class="stakeholder-node node-${index}" data-stakeholder-type="${escapeHtml(item.type)}" data-tone="${escapeHtml(item.tone)}">
-      <span class="stakeholder-symbol">${escapeHtml(item.symbol)}</span>
-      <b>${escapeHtml(item.label)}</b>
-      <em>${escapeHtml(item.role)}</em>
-      <small>${escapeHtml(scenario.slice(0, 18))}</small>
+  els.stakeholderMap.innerHTML = `
+    <div class="stakeholder-board">
+      ${getStakeholderVisuals().map((item) => `
+        <article class="stakeholder-cluster" data-stakeholder-type="${escapeHtml(item.type)}" data-tone="${escapeHtml(item.tone)}">
+          <span class="stakeholder-symbol">${escapeHtml(item.symbol)}</span>
+          <div>
+            <b>${escapeHtml(item.label)}</b>
+            <em>${escapeHtml(item.role)}</em>
+          </div>
+          <div class="stakeholder-chip-list">
+            ${(item.items || []).map((name) => `<span>${escapeHtml(name)}</span>`).join('')}
+          </div>
+        </article>
+      `).join('')}
     </div>
-  `).join('') + '<div class="stakeholder-legend">人=目标用户  伴=陪伴者  服=一线服务  管=管理者  端=平台/设备</div>';
+    <p class="stakeholder-note">当前场景：${escapeHtml(scenario.slice(0, 46))}</p>
+  `;
 }
 
 function renderKanoChart(project) {
@@ -1063,6 +1113,64 @@ function renderSankeyChart(project) {
     </div>
     ${index < rows.length - 1 ? '<i class="sankey-link"></i>' : ''}
   `).join('');
+}
+
+function buildQuadrantPoints(project, text = '') {
+  const source = [
+    ...project.needs.map((item) => ({ label: item.title, x: Number(item.satisfaction) || 2, y: Number(item.importance) || 3, note: '来自需求筛选数据' })),
+    ...extractKeywords(`${project.title} ${project.scenario} ${text}`).slice(0, 6).map((item, index) => ({
+      label: item.word,
+      x: Math.max(1, Math.min(5, 2 + (index % 4))),
+      y: Math.max(1, Math.min(5, Math.round(Math.min(5, item.count + 2)))),
+      note: `关键词权重 ${item.count}`,
+    })),
+  ];
+  const fallback = [
+    { label: '高频痛点', x: 2, y: 5, note: '优先澄清原因与影响范围' },
+    { label: '关键触点', x: 4, y: 4, note: '适合进入原型与蓝图' },
+    { label: '潜在机会', x: 3, y: 3, note: '继续补充调研证据' },
+    { label: '低优事项', x: 4, y: 2, note: '暂缓投入资源' },
+  ];
+  return (source.length ? source : fallback).slice(0, 10);
+}
+
+function renderResearchQuadrant(points) {
+  if (!els.researchQuadrant) return;
+  const list = points?.length ? points : buildQuadrantPoints(activeProject(), els.rawResearchData?.value || '');
+  els.researchQuadrant.innerHTML = `
+    <span class="axis-label axis-top">重要程度高</span>
+    <span class="axis-label axis-right">满意/可行程度高</span>
+    <b class="quad-label q1">优先突破</b>
+    <b class="quad-label q2">保持优化</b>
+    <b class="quad-label q3">继续观察</b>
+    <b class="quad-label q4">低优暂缓</b>
+    ${list.map((item) => {
+      const x = Math.max(6, Math.min(94, Number(item.x) * 18));
+      const y = Math.max(6, Math.min(94, 100 - Number(item.y) * 18));
+      return `<button class="quad-point" style="left:${x}%;top:${y}%;" title="${escapeHtml(item.note || '')}">${escapeHtml(String(item.label).slice(0, 4))}</button>`;
+    }).join('')}
+  `;
+}
+
+function renderBlueprintTemplate(project) {
+  if (!els.blueprintTemplate) return;
+  const bestConcept = rankedConcepts()[0]?.title || '待确定方案';
+  const painPoint = project.needs[0]?.title || extractKeywords(project.scenario)[0]?.word || '关键服务断点';
+  const evidence = STAGES.flatMap((stage) => project.stages[stage.id]?.evidence || []);
+  const columns = ['进入服务', '等待/识别', '核心办理', '结果确认', '反馈迭代'];
+  const rows = [
+    ['用户行为', '提出需求', `遇到${painPoint}`, `体验${bestConcept}`, '确认结果', '提出反馈'],
+    ['前台触点', '入口提示', '导引/问询', '服务执行', '结果说明', '满意度收集'],
+    ['后台支持', '规则匹配', '资源调度', '数据记录', '异常处理', '改进归档'],
+    ['实体证据', '标识/页面', '排队信息', '服务单据', '结果凭证', '反馈表'],
+    ['失败点/机会', painPoint, '信息断点', '协同延迟', '解释不足', evidence[0]?.title || '补充测试证据'],
+  ];
+  els.blueprintTemplate.innerHTML = `
+    <div class="blueprint-grid" style="--cols:${columns.length + 1}">
+      <b></b>${columns.map((col) => `<b>${escapeHtml(col)}</b>`).join('')}
+      ${rows.map(([row, ...cells]) => `<strong>${escapeHtml(row)}</strong>${cells.map((cell) => `<span>${escapeHtml(cell)}</span>`).join('')}`).join('')}
+    </div>
+  `;
 }
 
 function renderStudentInsights(project) {
@@ -1100,6 +1208,41 @@ function renderTeacherInsights() {
     <div class="visual-card"><h3>课堂平均进度</h3><div class="big-number">${average}%</div><p class="muted">用于判断是否需要集中讲解或分组辅导。</p></div>
     <div class="visual-card"><h3>数据流桑基概览</h3><div class="sankey-chart compact">${groupStats.map((group) => `<div class="sankey-step"><span>${escapeHtml(group.name)}</span><b>${group.needs + group.concepts}</b></div>`).join('<i class="sankey-link"></i>')}</div></div>
   `;
+}
+
+function buildGradeRows() {
+  return state.groups.map((group) => {
+    const progress = calculateStageProgress(group.project).overall;
+    const evidence = STAGES.reduce((sum, stage) => sum + (group.project.stages[stage.id]?.evidence?.length || 0), 0);
+    const output = group.project.needs.length * 8 + group.project.concepts.length * 10 + group.project.feedback.length * 8;
+    const score = Math.min(100, Math.round(progress * 0.45 + Math.min(35, evidence * 5) + Math.min(20, output)));
+    const comment = score >= 85
+      ? '过程证据较完整，方案链条清晰，可继续强化测试数据解释。'
+      : score >= 70
+        ? '已形成基础闭环，建议补充调研证据与服务蓝图细节。'
+        : '当前材料偏少，需优先补齐调研、需求筛选和方案验证证据。';
+    return { group, progress, evidence, score, comment };
+  });
+}
+
+function renderGradingTable() {
+  if (!els.gradingTable) return;
+  const rows = buildGradeRows();
+  els.gradingTable.innerHTML = rows.length
+    ? `
+      <div class="grade-row grade-head"><b>小组</b><b>进度</b><b>证据</b><b>智能分</b><b>教师手评分</b><b>评语</b></div>
+      ${rows.map((row) => `
+        <div class="grade-row">
+          <span>${escapeHtml(row.group.name)}</span>
+          <span>${row.progress}%</span>
+          <span>${row.evidence}</span>
+          <strong>${row.score}</strong>
+          <input type="number" min="0" max="100" value="${row.score}" data-manual-score="${escapeHtml(row.group.id)}" />
+          <textarea rows="2" data-manual-comment="${escapeHtml(row.group.id)}">${escapeHtml(row.comment)}</textarea>
+        </div>
+      `).join('')}
+    `
+    : '<p class="muted">导入名单并生成分组后显示成绩表。</p>';
 }
 
 function renderLiveRail() {
@@ -1145,6 +1288,166 @@ function renderLiveRail() {
   }
 }
 
+async function runResearchAnalysis() {
+  const text = els.rawResearchData?.value?.trim() || '';
+  const prompt = els.researchAnalysisPrompt?.value?.trim() || '请识别调研材料中的高频痛点、关键利益相关者、服务断点，并给出四象限坐标建议。';
+  const local = buildLocalAnalysis('researchQuadrant', activeProject(), text);
+  if (!text) {
+    els.researchAnalysisResult.textContent = '请先粘贴或上传调研原始数据。';
+    return;
+  }
+  els.runResearchAnalysis.disabled = true;
+  els.researchAnalysisResult.textContent = '正在分析调研数据...';
+  try {
+    const aiText = await requestModelText(`${prompt}\n\n原始调研材料：\n${text.slice(0, 5000)}`);
+    els.researchAnalysisResult.textContent = aiText || local;
+  } catch (error) {
+    els.researchAnalysisResult.textContent = `${local}\n\n未能调用大模型，已使用本地启发式分析。原因：${error.message}`;
+  } finally {
+    renderResearchQuadrant(buildQuadrantPoints(activeProject(), text));
+    els.runResearchAnalysis.disabled = false;
+  }
+}
+
+async function openSmartAnalysis(vizId) {
+  const title = document.querySelector(`#${vizId}`)?.closest('.visual-card, .panel')?.querySelector('h2,h3')?.textContent || '智能分析';
+  const local = buildLocalAnalysis(vizId, activeProject(), els.rawResearchData?.value || '');
+  els.vizModalTitle.textContent = `${title} · 智能分析`;
+  els.vizModalBody.dataset.vizId = vizId;
+  els.vizModalBody.innerHTML = `<div class="model-result">${escapeHtml(local)}</div>`;
+  els.vizModal.hidden = false;
+  try {
+    const aiText = await requestModelText(`请作为服务设计课程助教，对当前可视化「${title}」进行课堂分析，指出结论、风险和下一步行动。\n\n项目数据：\n${JSON.stringify(activeProject()).slice(0, 6000)}`);
+    els.vizModalBody.innerHTML = `<div class="model-result">${escapeHtml(aiText)}</div>`;
+  } catch {
+    // The local analysis above remains visible when no personal API key is configured.
+  }
+}
+
+async function requestModelText(prompt) {
+  const provider = modelSettings.provider;
+  const providerSettings = modelSettings.providers?.[provider] || {};
+  if (!providerSettings.apiKey) throw new Error('未配置个人 API Key');
+  const response = await apiFetch('./api/llm/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      provider,
+      apiKey: providerSettings.apiKey,
+      model: providerSettings.model || modelSettings.model || '',
+      baseUrl: providerSettings.baseUrl || '',
+      prompt,
+      context: buildCurrentModelContext(),
+    }),
+  });
+  if (!response.ok) throw new Error(`接口返回 ${response.status}`);
+  const data = await response.json();
+  if (data.ok === false) throw new Error(data.error || '模型未返回有效结果');
+  return data.content || data.text || data.message || '';
+}
+
+function buildLocalAnalysis(vizId, project, rawText = '') {
+  const progress = calculateStageProgress(project);
+  const evidenceCount = STAGES.reduce((sum, stage) => sum + (project.stages[stage.id]?.evidence?.length || 0), 0);
+  const keywords = extractKeywords(`${project.title} ${project.scenario} ${rawText}`).slice(0, 6);
+  const topConcept = rankedConcepts()[0]?.title || '暂未形成明确优先方案';
+  const base = [
+    `项目：${project.title}`,
+    `整体进度：${progress.overall}%，过程证据 ${evidenceCount} 条，需求 ${project.needs.length} 条，方案 ${project.concepts.length} 个。`,
+    `主要关键词：${keywords.map((item) => `${item.word}(${item.count})`).join('、') || '暂无'}`,
+  ];
+  if (vizId === 'rankChart') base.push(`TOPSIS 当前优先方案为「${topConcept}」，建议核查评分依据是否来自真实调研证据。`);
+  if (vizId === 'kanoChart') base.push('Kano 图应重点关注“重要度高、满意度低”的需求，把它们转入方案构思和测试验证。');
+  if (vizId === 'stakeholderMap') base.push('利益相关者需要从角色名称推进到责任、触点、利益冲突和协同关系。');
+  if (vizId === 'blueprintTemplate' || vizId === 'sankeyChart') base.push('服务蓝图应补齐用户行为、前台触点、后台支持、实体证据和失败点。');
+  if (vizId === 'researchQuadrant') base.push('四象限坐标可用于区分优先突破、保持优化、继续观察和低优暂缓。');
+  base.push('下一步：补充可追溯原始材料，并将分析结论同步到需求筛选、方案排序和测试评估中。');
+  return base.join('\n');
+}
+
+function runSmartScore() {
+  renderGradingTable();
+  if (els.gradingTable) {
+    const note = document.createElement('p');
+    note.className = 'muted';
+    note.textContent = '已根据当前过程证据生成智能分和初始评语，教师可在表格中直接手动调整。';
+    els.gradingTable.prepend(note);
+  }
+}
+
+function exportGradebook() {
+  const rows = [['group', 'members', 'progress', 'evidence', 'smart_score', 'manual_score', 'comment']];
+  buildGradeRows().forEach((row) => {
+    const manualScore = document.querySelector(`[data-manual-score="${CSS.escape(row.group.id)}"]`)?.value || row.score;
+    const comment = document.querySelector(`[data-manual-comment="${CSS.escape(row.group.id)}"]`)?.value || row.comment;
+    rows.push([
+      row.group.name,
+      row.group.members.map((member) => member.name).join(' / '),
+      row.progress,
+      row.evidence,
+      row.score,
+      manualScore,
+      comment,
+    ]);
+  });
+  downloadText('service-design-gradebook.csv', rows.map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`).join(',')).join('\n'), 'text/csv;charset=utf-8');
+}
+
+function generateProjectReport() {
+  const project = activeProject();
+  const report = buildProjectReport(project);
+  els.projectReportPreview.textContent = report;
+  downloadText('service-design-project-report.doc', htmlDocumentFromText(report), 'application/msword;charset=utf-8');
+}
+
+function exportProjectPackage() {
+  const project = activeProject();
+  downloadText('service-design-project-data.json', JSON.stringify({ exportedAt: new Date().toISOString(), state, activeGroupId, project }, null, 2), 'application/json;charset=utf-8');
+  downloadText('service-design-project-data.csv', projectToCsv(project), 'text/csv;charset=utf-8');
+  downloadText('service-design-project-report.doc', htmlDocumentFromText(buildProjectReport(project)), 'application/msword;charset=utf-8');
+  downloadText('service-design-project-excel.xls', htmlWorkbook(project), 'application/vnd.ms-excel;charset=utf-8');
+}
+
+function printProjectPdf() {
+  const win = window.open('', '_blank');
+  if (!win) return;
+  win.document.write(htmlDocumentFromText(buildProjectReport(activeProject())));
+  win.document.close();
+  win.focus();
+  win.print();
+}
+
+function buildProjectReport(project) {
+  const progress = calculateStageProgress(project);
+  const keywords = extractKeywords(`${project.title} ${project.scenario}`).slice(0, 8);
+  const ranked = rankedConcepts();
+  return [
+    `《服务设计》课程项目报告`,
+    '',
+    `一、项目主题：${project.title}`,
+    `二、服务场景：${project.scenario}`,
+    `三、调研方法与原始证据：共记录 ${STAGES.reduce((sum, stage) => sum + (project.stages[stage.id]?.evidence?.length || 0), 0)} 条过程证据。`,
+    `四、用户画像与利益相关者：围绕目标用户、陪伴者、一线服务、管理者和平台/设备建立关系图。`,
+    `五、需求筛选：已记录 ${project.needs.length} 条需求，可结合 Kano/AHP 解释优先级。`,
+    `六、方案生成与筛选：已记录 ${project.concepts.length} 个方案，当前优先方案为 ${ranked[0]?.title || '待补充'}。`,
+    `七、服务蓝图：建议按用户行为、前台触点、后台支持、实体证据和失败点展开。`,
+    `八、测试与评估：当前整体闭环进度 ${progress.overall}%，需结合 SERVQUAL/TOPSIS 说明验证结果。`,
+    `九、关键词摘要：${keywords.map((item) => `${item.word}(${item.count})`).join('、') || '待补充'}`,
+    `十、反思与迭代：说明本轮设计的局限、数据不足和下一轮改进计划。`,
+  ].join('\n');
+}
+
+function htmlDocumentFromText(text) {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>服务设计项目报告</title><style>body{font-family:Microsoft YaHei,Arial,sans-serif;line-height:1.8;padding:32px;color:#12252b;white-space:pre-wrap}</style></head><body>${escapeHtml(text)}</body></html>`;
+}
+
+function htmlWorkbook(project) {
+  return `<!doctype html><html><head><meta charset="utf-8"></head><body><table border="1"><tr><th>类型</th><th>标题</th><th>指标A</th><th>指标B</th><th>内容</th></tr>${projectToCsv(project).split('\n').slice(1).map((line) => {
+    const cells = line.split('","').map((cell) => cell.replace(/^"|"$/g, ''));
+    return `<tr>${cells.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`;
+  }).join('')}</table></body></html>`;
+}
+
 function enhanceVisualCards() {
   [
     ['progressBars', '阶段进度柱状图'],
@@ -1155,6 +1458,8 @@ function enhanceVisualCards() {
     ['kanoChart', 'Kano 需求分类图'],
     ['rankChart', 'TOPSIS 方案排序图'],
     ['sankeyChart', '数据闭环桑基图'],
+    ['researchQuadrant', '调研四象限图'],
+    ['blueprintTemplate', '标准服务蓝图'],
   ].forEach(([id, title]) => {
     const chart = document.querySelector(`#${id}`);
     const card = chart?.closest('.visual-card, .panel');
@@ -1164,12 +1469,18 @@ function enhanceVisualCards() {
     toolbar.dataset.vizToolbar = id;
     toolbar.innerHTML = `
       <span>${title}</span>
+      <button type="button" data-viz-ai="${id}">智能分析</button>
       <button type="button" data-viz-fullscreen="${id}">全屏</button>
-      <button type="button" data-viz-export="png" data-viz-target="${id}">PNG</button>
-      <button type="button" data-viz-export="svg" data-viz-target="${id}">SVG</button>
-      <button type="button" data-viz-export="json" data-viz-target="${id}">JSON</button>
-      <button type="button" data-viz-export="csv" data-viz-target="${id}">CSV</button>
-      <button type="button" data-viz-export="psd" data-viz-target="${id}">PSD说明</button>
+      <div class="export-menu">
+        <button type="button">导出</button>
+        <div class="export-options">
+          <button type="button" data-viz-export="png" data-viz-target="${id}">PNG</button>
+          <button type="button" data-viz-export="svg" data-viz-target="${id}">SVG</button>
+          <button type="button" data-viz-export="json" data-viz-target="${id}">JSON</button>
+          <button type="button" data-viz-export="csv" data-viz-target="${id}">CSV</button>
+          <button type="button" data-viz-export="psd" data-viz-target="${id}">PSD说明</button>
+        </div>
+      </div>
     `;
     card.prepend(toolbar);
   });
@@ -1177,8 +1488,16 @@ function enhanceVisualCards() {
 
 function handleVisualizationHover(event) {
   const bubble = event.target.closest('.keyword-bubble[data-keyword]');
-  if (!bubble || lockedKeyword) return;
+  if (!bubble) return;
   updateBubbleDetail(bubble);
+}
+
+function handleVisualizationLeave(event) {
+  const bubble = event.target.closest('.keyword-bubble[data-keyword]');
+  if (!bubble || bubblePlayTimer) return;
+  const next = event.relatedTarget;
+  if (next && bubble.contains(next)) return;
+  hideBubbleDetail();
 }
 
 function handleVisualizationClick(event) {
@@ -1190,10 +1509,6 @@ function handleVisualizationClick(event) {
 
   const bubble = event.target.closest('.keyword-bubble[data-keyword]');
   if (bubble) {
-    lockedKeyword = lockedKeyword === bubble.dataset.keyword ? '' : bubble.dataset.keyword;
-    document.querySelectorAll('.keyword-bubble').forEach((item) => {
-      item.classList.toggle('active', item.dataset.keyword === lockedKeyword);
-    });
     updateBubbleDetail(bubble);
     return;
   }
@@ -1210,6 +1525,12 @@ function handleVisualizationClick(event) {
     return;
   }
 
+  const smartAnalysis = event.target.closest('[data-viz-ai]');
+  if (smartAnalysis) {
+    openSmartAnalysis(smartAnalysis.dataset.vizAi);
+    return;
+  }
+
   const exportButton = event.target.closest('[data-viz-export]');
   if (exportButton) {
     exportVisualization(exportButton.dataset.vizTarget || els.vizModalBody?.dataset.vizId, exportButton.dataset.vizExport);
@@ -1219,11 +1540,19 @@ function handleVisualizationClick(event) {
 function updateBubbleDetail(bubble) {
   const detail = document.querySelector('#bubbleDetail');
   if (!detail) return;
+  detail.hidden = false;
   detail.innerHTML = `
     <strong>${escapeHtml(bubble.dataset.keyword)}</strong>
-    <span>权重 ${escapeHtml(bubble.dataset.count)} · ${bubbleToneLabel(bubble.dataset.tone)}</span>
+    <span>权重 ${escapeHtml(bubble.dataset.count)} · 原始次数 ${escapeHtml(bubble.dataset.rawCount || bubble.dataset.count)} · ${bubbleToneLabel(bubble.dataset.tone)}</span>
     <p>${escapeHtml(bubble.dataset.detail)}</p>
   `;
+}
+
+function hideBubbleDetail() {
+  const detail = document.querySelector('#bubbleDetail');
+  if (!detail) return;
+  detail.hidden = true;
+  detail.innerHTML = '';
 }
 
 function toggleBubblePlayback(button) {
@@ -1711,3 +2040,4 @@ async function safeJson(response) {
     return { ok: false, error: '服务器返回内容无法解析，请刷新页面后重试。' };
   }
 }
+
