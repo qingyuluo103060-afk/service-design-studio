@@ -143,6 +143,7 @@ const validState = validateClassroomState({
       id: 'g1',
       name: '第1组',
       members: [{ id: 's1', name: '陈一', className: '产品设计1班' }],
+      roles: { s1: '用户访谈' },
       project: {
         title: '导诊服务',
         scenario: '医院导诊',
@@ -160,6 +161,7 @@ const validState = validateClassroomState({
 });
 assert.equal(validState.ok, true);
 assert.equal(validState.value.groups[0].project.title, '导诊服务');
+assert.equal(validState.value.groups[0].roles.s1, '用户访谈');
 assert.equal(validateClassroomState({ groups: [] }).ok, false);
 
 const empathyToolkit = getStageToolkit('empathy');
