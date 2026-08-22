@@ -7,7 +7,7 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260822-interactive-viz" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260822-classroom-v4" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
@@ -26,13 +26,12 @@
           <article><strong>5</strong><span>赋能环节</span></article>
           <article><strong>∞</strong><span>数据闭环</span></article>
         </div>
-        <div class="welcome-flow-map">
-          <span class="flow-node f1">探</span>
-          <span class="flow-node f2">像</span>
-          <span class="flow-node f3">筛</span>
-          <span class="flow-node f4">案</span>
-          <span class="flow-node f5">评</span>
-          <b>课堂数据闭环</b>
+        <div class="welcome-flow-map welcome-path-map" aria-label="服务设计课程路径">
+          <article><span>探</span><b>选题调研</b><small>真实问题与原始材料</small></article>
+          <article><span>像</span><b>用户画像</b><small>人群、情境与利益相关者</small></article>
+          <article><span>筛</span><b>需求筛选</b><small>Kano / AHP 形成优先级</small></article>
+          <article><span>案</span><b>方案蓝图</b><small>TRIZ / TOPSIS / 服务蓝图</small></article>
+          <article><span>评</span><b>测试评价</b><small>SERVQUAL 与数据闭环</small></article>
         </div>
       </div>
       <div class="auth-card">
@@ -131,6 +130,19 @@
 
           <section id="module-overview" class="workspace-module active">
             <div class="module-title-row"><div><p class="eyebrow">Dashboard</p><h2>项目总览</h2></div><span class="status-chip">数据闭环</span></div>
+            <section class="panel export-hub">
+              <div class="panel-title">
+                <div><p class="eyebrow">Project Package</p><h2>项目报告与资料集成导出</h2></div>
+                <span class="status-chip">Word / PDF / Excel / CSV</span>
+              </div>
+              <p class="muted">学生可在项目完成后生成课程报告草稿；教师或小组可一次性导出项目材料、过程数据和可视化结果。</p>
+              <div class="data-actions">
+                <button id="generateProjectReport">生成项目报告</button>
+                <button id="exportProjectPackage" class="ghost">一键导出资料包</button>
+                <button id="printProjectPdf" class="ghost">打印/另存 PDF</button>
+              </div>
+              <div id="projectReportPreview" class="model-result">报告生成后会显示课程报告结构、关键内容和可继续完善的写作提示。</div>
+            </section>
             <div class="visual-grid">
               <div class="visual-card"><h3>阶段进度</h3><div id="progressBars"></div></div>
               <div class="visual-card"><h3>调研关键词文字云</h3><div id="wordCloud" class="word-cloud"></div></div>
@@ -146,6 +158,22 @@
                 <label>项目主题<input id="projectTitle" type="text" /></label>
                 <label>真实服务场景<textarea id="projectScenario" rows="4"></textarea></label>
               </div>
+            </section>
+            <section class="panel research-lab">
+              <div class="panel-title">
+                <div><p class="eyebrow">Research Lab</p><h2>调研原始数据与智能分析</h2></div>
+                <span class="status-chip">上传 / 粘贴 / AI 分析</span>
+              </div>
+              <div class="form-grid">
+                <label>原始调研数据<textarea id="rawResearchData" rows="7" placeholder="可粘贴访谈记录、问卷开放题、观察记录、CSV 文本等"></textarea></label>
+                <label>个性化分析提示词<textarea id="researchAnalysisPrompt" rows="7" placeholder="例如：请识别高频痛点、利益相关者冲突、服务断点，并给出四象限坐标建议。"></textarea></label>
+              </div>
+              <div class="data-actions">
+                <input id="rawResearchFile" type="file" accept=".txt,.csv,.json,text/plain,text/csv,application/json" />
+                <button id="runResearchAnalysis">一键智能分析</button>
+              </div>
+              <div id="researchAnalysisResult" class="model-result">上传或粘贴数据后，可调用个人大模型接口进行分析；未配置 API Key 时会先生成本地启发式分析。</div>
+              <div id="researchQuadrant" class="quadrant-chart" aria-label="调研分析四象限图"></div>
             </section>
             <section class="panel task-panel">
               <div class="panel-title"><div><p class="eyebrow">Research Evidence</p><h2 id="stageTitle">阶段任务</h2><p id="stageFocus" class="muted"></p></div><button id="addEvidence">添加证据</button></div>
@@ -179,6 +207,10 @@
 
           <section id="module-blueprint" class="workspace-module">
             <section class="panel"><div class="panel-title"><div><p class="eyebrow">Blueprint</p><h2>服务蓝图与成果表达</h2></div><span class="status-chip">触点 · 前台 · 后台 · 证据</span></div><div id="sankeyChart" class="sankey-chart"></div></section>
+            <section class="panel blueprint-panel">
+              <div class="panel-title"><div><p class="eyebrow">Standard Blueprint</p><h2>标准化服务蓝图模板</h2></div><button id="analyzeBlueprint" class="ghost">智能生成蓝图</button></div>
+              <div id="blueprintTemplate" class="blueprint-template"></div>
+            </section>
           </section>
 
           <section id="module-testing" class="workspace-module">
@@ -219,6 +251,19 @@
               <div class="data-actions"><button id="importData" class="ghost">导入数据</button><input id="importFile" type="file" accept="application/json,.json" hidden /><button id="exportData" class="ghost">导出数据</button><button id="resetDemo" class="ghost">重置示例</button></div>
               <div id="groupList" class="group-list"></div>
             </section>
+            <section class="panel grading-panel">
+              <div class="panel-title"><div><p class="eyebrow">Assessment</p><h2>课程评分、量规与成绩单</h2></div><span class="status-chip">智能评分 + 教师手评</span></div>
+              <div class="form-grid">
+                <label>评分量规<textarea id="rubricText" rows="7" placeholder="可粘贴量规：调研证据、问题定义、需求筛选、方案创新、服务蓝图、测试评估、报告表达等维度及分值。"></textarea></label>
+                <label>成绩构成<textarea id="gradeComposition" rows="7" placeholder="示例：过程证据30%；方案与蓝图30%；测试评估20%；课程报告20%。"></textarea></label>
+              </div>
+              <div class="data-actions">
+                <input id="rubricFile" type="file" accept=".txt,.csv,.json,text/plain,text/csv,application/json" />
+                <button id="runSmartScore">智能评分与评语</button>
+                <button id="exportGradebook" class="ghost">导出成绩单</button>
+              </div>
+              <div id="gradingTable" class="grading-table"></div>
+            </section>
           </section>
         </section>
 
@@ -251,17 +296,22 @@
         <header class="viz-modal-head">
           <h2 id="vizModalTitle">可视化预览</h2>
           <div class="viz-modal-actions">
-            <button class="ghost" data-viz-export="png">PNG</button>
-            <button class="ghost" data-viz-export="svg">SVG</button>
-            <button class="ghost" data-viz-export="json">JSON</button>
-            <button class="ghost" data-viz-export="csv">CSV</button>
-            <button class="ghost" data-viz-export="psd">PSD说明</button>
+            <div class="export-menu">
+              <button class="ghost" type="button">导出</button>
+              <div class="export-options">
+                <button class="ghost" data-viz-export="png">PNG</button>
+                <button class="ghost" data-viz-export="svg">SVG</button>
+                <button class="ghost" data-viz-export="json">JSON</button>
+                <button class="ghost" data-viz-export="csv">CSV</button>
+                <button class="ghost" data-viz-export="psd">PSD说明</button>
+              </div>
+            </div>
             <button class="ghost" data-close-viz>关闭</button>
           </div>
         </header>
         <div id="vizModalBody" class="viz-modal-body"></div>
       </div>
     </section>
-    <script type="module" src="./src/app.js?v=20260822-interactive-viz"></script>
+    <script type="module" src="./src/app.js?v=20260822-classroom-v4"></script>
   </body>
 </html>
