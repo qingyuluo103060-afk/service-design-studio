@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {
+  analyzeKanoResponses,
   buildAssistantAdvice,
+  calculateAhpConsistency,
   calculateAhpWeights,
   calculateCompetencyProfile,
   calculateStageProgress,
@@ -15,6 +17,7 @@ import {
   mapKeywordsToBubbles,
   getRiskStatus,
   getStageToolkit,
+  calculateTopsisAnalysis,
   rankByTopsis,
   validateClassroomState,
 } from '../src/app-core.mjs';
@@ -81,6 +84,25 @@ const weights = calculateAhpWeights([
 assert.equal(weights.length, 3);
 assert.equal(Math.round(weights.reduce((sum, value) => sum + value, 0) * 1000), 1000);
 assert.ok(weights[0] > weights[1] && weights[1] > weights[2], 'AHP should preserve relative priority');
+const ahpAnalysis = calculateAhpConsistency([
+  [1, 3, 5],
+  [1 / 3, 1, 2],
+  [1 / 5, 1 / 2, 1],
+]);
+assert.equal(ahpAnalysis.weights.length, 3);
+assert.ok(ahpAnalysis.cr >= 0 && ahpAnalysis.cr < 0.1, 'AHP consistency ratio should flag acceptable matrices');
+assert.equal(ahpAnalysis.consistent, true);
+
+const kanoAnalysis = analyzeKanoResponses([
+  { need: '候诊提醒', functional: '喜欢', dysfunctional: '不喜欢' },
+  { need: '候诊提醒', functional: '理应如此', dysfunctional: '不喜欢' },
+  { need: '流程说明', functional: '喜欢', dysfunctional: '无所谓' },
+  { need: '流程说明', functional: '喜欢', dysfunctional: '可以忍受' },
+]);
+assert.equal(kanoAnalysis.length, 2);
+assert.equal(kanoAnalysis[0].need, '候诊提醒');
+assert.equal(kanoAnalysis[0].dominantCategory, '期望型需求');
+assert.equal(kanoAnalysis[1].dominantCategory, '魅力型需求');
 
 const ranked = rankByTopsis(
   [
@@ -97,6 +119,22 @@ const ranked = rankByTopsis(
 );
 assert.equal(ranked[0].title, '方案B');
 assert.ok(ranked[0].score > ranked[1].score, 'TOPSIS scores should sort descending');
+
+const topsisAnalysis = calculateTopsisAnalysis(
+  [
+    { title: '方案A', novelty: 4, feasibility: 3, serviceQuality: 5, risk: 2 },
+    { title: '方案B', novelty: 3, feasibility: 5, serviceQuality: 4, risk: 1 },
+  ],
+  [
+    { key: 'novelty', weight: 0.25, direction: 'benefit' },
+    { key: 'feasibility', weight: 0.3, direction: 'benefit' },
+    { key: 'serviceQuality', weight: 0.3, direction: 'benefit' },
+    { key: 'risk', weight: 0.15, direction: 'cost' },
+  ],
+);
+assert.equal(topsisAnalysis.ranked.length, 2);
+assert.ok(topsisAnalysis.ranked[0].score >= 0 && topsisAnalysis.ranked[0].score <= 1);
+assert.ok(Object.hasOwn(topsisAnalysis.idealBest, 'risk'));
 
 const advice = buildAssistantAdvice(project, 'prototype');
 assert.ok(advice.some((item) => item.includes('原型') || item.includes('测试')));
