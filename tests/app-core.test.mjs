@@ -8,6 +8,7 @@ import {
   createGroups,
   COURSE_MODULES,
   getVisibleModules,
+  mapKeywordsToBubbles,
   getRiskStatus,
   getStageToolkit,
   rankByTopsis,
@@ -106,6 +107,16 @@ const profile = calculateCompetencyProfile({
 assert.deepEqual(Object.keys(profile), ['知识掌握', '用户研究', '问题定义', '方案创造', '测试迭代']);
 assert.ok(profile['用户研究'] > profile['测试迭代']);
 assert.ok(profile['方案创造'] > 0);
+
+const keywordBubbles = mapKeywordsToBubbles([
+  { word: '等待', count: 6 },
+  { word: '需求提醒', count: 3 },
+  { word: '蓝图方案', count: 1 },
+]);
+assert.equal(keywordBubbles.length, 3);
+assert.ok(keywordBubbles[0].size > keywordBubbles[1].size && keywordBubbles[1].size > keywordBubbles[2].size);
+assert.ok(keywordBubbles.every((item) => item.x >= 8 && item.x <= 92 && item.y >= 12 && item.y <= 88));
+assert.equal(keywordBubbles[1].tone, 'need');
 
 const validState = validateClassroomState({
   studentText: '20260101 陈一 产品设计1班',

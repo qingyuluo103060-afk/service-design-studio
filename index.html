@@ -7,7 +7,7 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260822-workspace" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260822-visual-v2" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
@@ -15,21 +15,24 @@
         <i></i><i></i><i></i>
       </div>
       <div class="welcome-panel">
-        <span class="brand-mark">SD</span>
-        <p class="eyebrow">Service Design Studio</p>
-        <h1>服务设计智慧课程工作台</h1>
-        <p>围绕“三阶双融、五环赋能、三域协同、数据闭环”，把选题、调研、画像、需求、方案、蓝图、测试与 AI 反馈整合到同一个课堂流程中。</p>
+        <div class="welcome-center">
+          <span class="brand-mark">SD</span>
+          <p class="eyebrow">Service Design Studio</p>
+          <h1>服务设计智慧课程工作台</h1>
+          <p>围绕“三阶双融、五环赋能、三域协同、数据闭环”，把选题、调研、画像、需求、方案、蓝图、测试与 AI 反馈整合到同一个课堂流程中。</p>
+        </div>
         <div class="welcome-snapshot" aria-label="课程数据预览">
           <article><strong>3</strong><span>教学阶段</span></article>
           <article><strong>5</strong><span>赋能环节</span></article>
           <article><strong>∞</strong><span>数据闭环</span></article>
         </div>
-        <div class="welcome-flow">
-          <span>探</span><b>选题调研</b>
-          <span>像</span><b>用户画像</b>
-          <span>筛</span><b>需求筛选</b>
-          <span>案</span><b>方案迭代</b>
-          <span>评</span><b>测试评估</b>
+        <div class="welcome-flow-map">
+          <span class="flow-node f1">探</span>
+          <span class="flow-node f2">像</span>
+          <span class="flow-node f3">筛</span>
+          <span class="flow-node f4">案</span>
+          <span class="flow-node f5">评</span>
+          <b>课堂数据闭环</b>
         </div>
       </div>
       <div class="auth-card">
@@ -243,6 +246,6 @@
         </aside>
       </main>
     </div>
-    <script type="module" src="./src/app.js?v=20260822-visual-refresh"></script>
+    <script type="module" src="./src/app.js?v=20260822-visual-v2"></script>
   </body>
 </html>

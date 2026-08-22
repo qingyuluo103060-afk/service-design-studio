@@ -384,6 +384,33 @@ export function extractKeywords(text) {
     .slice(0, 18);
 }
 
+export function mapKeywordsToBubbles(keywords) {
+  const items = Array.isArray(keywords) ? keywords.slice(0, 16) : [];
+  const maxCount = Math.max(...items.map((item) => Number(item.count) || 0), 1);
+  const minSize = 48;
+  const maxSize = 118;
+  return items.map((item, index) => {
+    const count = Number(item.count) || 1;
+    const ratio = count / maxCount;
+    return {
+      word: String(item.word || ''),
+      count,
+      size: Math.round(minSize + (maxSize - minSize) * Math.sqrt(ratio)),
+      tone: keywordTone(item.word),
+      x: 8 + ((index * 23) % 84),
+      y: 12 + ((index * 31) % 76),
+    };
+  });
+}
+
+function keywordTone(word) {
+  const text = String(word || '');
+  if (/(需求|痛点|满意|等待|问题|断点)/.test(text)) return 'need';
+  if (/(方案|蓝图|原型|触点|设计|流程)/.test(text)) return 'concept';
+  if (/(测试|评价|反馈|质量|SERVQUAL|TOPSIS)/i.test(text)) return 'test';
+  return 'research';
+}
+
 function euclideanDistance(values, ideal, criteria) {
   return Math.sqrt(
     criteria.reduce((sum, criterion) => sum + (values[criterion.key] - ideal[criterion.key]) ** 2, 0),

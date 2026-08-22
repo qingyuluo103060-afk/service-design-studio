@@ -10,6 +10,7 @@ import {
   getVisibleModules,
   getRiskStatus,
   getStageToolkit,
+  mapKeywordsToBubbles,
   parseStudentText,
   rankByTopsis,
   validateClassroomState,
@@ -926,9 +927,20 @@ function renderVisuals() {
 
   const text = STAGES.flatMap((stage) => project.stages[stage.id].evidence.map((item) => item.content)).join(' ');
   const keywords = extractKeywords(`${project.title} ${project.scenario} ${text}`);
+  const keywordBubbles = mapKeywordsToBubbles(keywords);
   els.wordCloud.innerHTML = keywords.length
-    ? keywords.map((item) => `<span style="font-size:${12 + item.count * 3}px">${escapeHtml(item.word)}</span>`).join('')
-    : '<span>暂无关键词</span>';
+    ? keywordBubbles.map((item, index) => `
+      <span
+        class="keyword-bubble"
+        data-tone="${item.tone}"
+        style="--size:${item.size}px;--x:${item.x}%;--y:${item.y}%;--delay:${index * -0.28}s"
+        title="${escapeHtml(item.word)}：${item.count}"
+      >
+        <b>${escapeHtml(item.word)}</b>
+        <small>${item.count}</small>
+      </span>
+    `).join('')
+    : '<span class="keyword-bubble empty-bubble"><b>暂无关键词</b><small>0</small></span>';
 
   const ranked = rankedConcepts();
   els.rankChart.innerHTML = ranked.length
