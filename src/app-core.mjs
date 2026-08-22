@@ -22,6 +22,100 @@ export const STAGES = [
   },
 ];
 
+export const COURSE_MODULES = [
+  {
+    id: 'overview',
+    group: '课程驾驶舱',
+    icon: '总',
+    title: '项目总览',
+    description: '查看当前项目阶段、总体进度、过程证据和课堂风险。',
+    roles: ['student', 'teacher'],
+  },
+  {
+    id: 'research',
+    group: '探索与共情',
+    icon: '探',
+    title: '选题与调研',
+    description: '完成选题方向、访谈、观察、问卷和服务探险证据记录。',
+    stageId: 'empathy',
+    roles: ['student', 'teacher'],
+  },
+  {
+    id: 'persona',
+    group: '定义与构思',
+    icon: '像',
+    title: '用户画像与利益相关者',
+    description: '把调研证据转化为用户画像、利益相关者关系和关键洞察。',
+    stageId: 'define',
+    roles: ['student', 'teacher'],
+  },
+  {
+    id: 'needs',
+    group: '定义与构思',
+    icon: '筛',
+    title: '需求筛选',
+    description: '使用 Kano、AHP 等方法筛选关键需求并形成优先级。',
+    stageId: 'define',
+    roles: ['student', 'teacher'],
+  },
+  {
+    id: 'concepts',
+    group: '方案生成',
+    icon: '案',
+    title: '方案生成与筛选',
+    description: '结合 TRIZ、TOPSIS 和评分雷达形成可比较的服务方案。',
+    stageId: 'prototype',
+    roles: ['student', 'teacher'],
+  },
+  {
+    id: 'blueprint',
+    group: '成果表达',
+    icon: '图',
+    title: '服务蓝图与成果',
+    description: '沉淀服务蓝图、触点设计、成果表达和过程文档。',
+    stageId: 'prototype',
+    roles: ['student', 'teacher'],
+  },
+  {
+    id: 'testing',
+    group: '测试评估',
+    icon: '评',
+    title: '测试与评估',
+    description: '使用 SERVQUAL、TOPSIS 和反馈记录完成测试迭代。',
+    stageId: 'prototype',
+    roles: ['student', 'teacher'],
+  },
+  {
+    id: 'ai-settings',
+    group: '智能协同',
+    icon: 'AI',
+    title: 'AI 模型设置',
+    description: '学生和教师分别接入个人 API Key，生成阶段化设计建议。',
+    roles: ['student', 'teacher'],
+  },
+  {
+    id: 'teacher-dashboard',
+    group: '教师端',
+    icon: '师',
+    title: '课堂统计',
+    description: '查看全班小组进度、风险分布、能力画像和数据流向。',
+    roles: ['teacher'],
+  },
+  {
+    id: 'class-management',
+    group: '教师端',
+    icon: '班',
+    title: '班级与分组',
+    description: '导入学生名单、生成小组、导入导出课堂数据。',
+    roles: ['teacher'],
+  },
+];
+
+export function getVisibleModules(role = 'student') {
+  const normalizedRole = role === 'teacher' ? 'teacher' : 'student';
+  return COURSE_MODULES.filter((item) => item.roles.includes(normalizedRole));
+}
+
 const STAGE_TOOLKITS = {
   empathy: {
     symbol: '探',
