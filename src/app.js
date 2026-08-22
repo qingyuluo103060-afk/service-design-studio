@@ -7,6 +7,7 @@ import {
   COURSE_MODULES,
   createGroups,
   extractKeywords,
+  getStakeholderVisuals,
   getVisibleModules,
   getRiskStatus,
   getStageToolkit,
@@ -20,6 +21,7 @@ const STORAGE_KEY = 'service-design-studio-v01';
 const ACCESS_CODE_KEY = 'service-design-access-code';
 const SESSION_TOKEN_KEY = 'service-design-session-token';
 const MODEL_SETTINGS_KEY = 'service-design-model-settings';
+const LOCAL_ACCOUNTS_KEY = 'service-design-local-accounts';
 const REQUEST_TIMEOUT_MS = 15000;
 
 const sampleStudentsText = `20260101 陈一 产品设计1班
@@ -39,6 +41,7 @@ let backendSaveTimer = null;
 let appConfig = { authRequired: false, providers: [] };
 let accessCode = sessionStorage.getItem(ACCESS_CODE_KEY) || '';
 let sessionToken = sessionStorage.getItem(SESSION_TOKEN_KEY) || '';
+let isLocalSession = sessionToken.startsWith('local-');
 let modelSettings = loadModelSettings();
 let activeAuthMode = 'login';
 let activeLoginRole = 'student';
@@ -48,6 +51,9 @@ let activeRole = 'teacher';
 let activeModuleId = 'overview';
 let activeGroupId = state.groups[0]?.id || 'g1';
 let activeStageId = 'empathy';
+let lockedKeyword = '';
+let bubblePlayTimer = null;
+let bubblePlayIndex = 0;
 
 const els = {
   body: document.body,
@@ -134,6 +140,9 @@ const els = {
   userName: document.querySelector('#userName'),
   userMeta: document.querySelector('#userMeta'),
   logoutAccount: document.querySelector('#logoutAccount'),
+  vizModal: document.querySelector('#vizModal'),
+  vizModalTitle: document.querySelector('#vizModalTitle'),
+  vizModalBody: document.querySelector('#vizModalBody'),
 };
 
 init();
@@ -327,6 +336,8 @@ function bindEvents() {
     if (event.key === 'Enter') unlockWithAccessCode();
   });
   els.generateWithModel.addEventListener('click', generateModelAdvice);
+  els.body.addEventListener('mouseover', handleVisualizationHover);
+  els.body.addEventListener('click', handleVisualizationClick);
 }
 
 function updateEvidence(event) {
@@ -428,14 +439,16 @@ async function loginAccount() {
 }
 
 async function registerAccount() {
-  await authenticateAccount('./api/auth/register', {
+  const payload = {
     role: activeRegisterRole,
     name: els.registerName.value,
     className: activeRegisterRole === 'student' ? els.registerClass.value : '',
     studentId: els.registerStudentId.value,
     teacherId: els.registerStudentId.value,
     password: els.registerPassword.value,
-  });
+  };
+  const ok = await authenticateAccount('./api/auth/register', payload);
+  if (ok && currentUser) saveLocalAccount(payload, currentUser);
 }
 
 async function authenticateAccount(url, payload) {
@@ -449,10 +462,17 @@ async function authenticateAccount(url, payload) {
     });
     const result = await safeJson(response);
     if (!response.ok || !result.ok) {
+      if (url.includes('/login') && response.status === 401 && tryLocalLogin(payload)) {
+        hideAuthGate();
+        renderUserProfile();
+        render();
+        return true;
+      }
       els.authMessage.textContent = result.error || '账号验证失败，请检查填写内容。';
-      return;
+      return false;
     }
     sessionToken = result.token;
+    isLocalSession = false;
     currentUser = result.user || null;
     applyRolePermissions();
     accessCode = '';
@@ -464,10 +484,18 @@ async function authenticateAccount(url, payload) {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
+    return true;
   } catch (error) {
+    if (url.includes('/login') && tryLocalLogin(payload)) {
+      hideAuthGate();
+      renderUserProfile();
+      render();
+      return true;
+    }
     els.authMessage.textContent = error.name === 'AbortError'
       ? '课堂服务器响应超时，请刷新页面后重试。'
       : '无法连接课堂服务器，请稍后重试。';
+    return false;
   } finally {
     setAuthBusy(false);
   }
@@ -481,6 +509,7 @@ function setAuthBusy(isBusy) {
 
 function logoutAccount() {
   sessionToken = '';
+  isLocalSession = false;
   accessCode = '';
   currentUser = null;
   sessionStorage.removeItem(SESSION_TOKEN_KEY);
@@ -724,6 +753,12 @@ function renderWorkspaceModules() {
 }
 
 async function loadCurrentUser() {
+  if (isLocalSession) {
+    currentUser = loadLocalSessionUser();
+    applyRolePermissions();
+    renderUserProfile();
+    return;
+  }
   if (!sessionToken || location.protocol === 'file:') {
     renderUserProfile();
     return;
@@ -929,18 +964,28 @@ function renderVisuals() {
   const keywords = extractKeywords(`${project.title} ${project.scenario} ${text}`);
   const keywordBubbles = mapKeywordsToBubbles(keywords);
   els.wordCloud.innerHTML = keywords.length
-    ? keywordBubbles.map((item, index) => `
+    ? `
+      <button type="button" class="bubble-play" data-bubble-play>播放关键词</button>
+      ${keywordBubbles.map((item, index) => {
+        const detail = keywordEvidence(item.word, project);
+        const activeClass = lockedKeyword === item.word ? ' active' : '';
+        return `
       <span
-        class="keyword-bubble"
+        class="keyword-bubble${activeClass}"
         data-tone="${item.tone}"
+        data-keyword="${escapeHtml(item.word)}"
+        data-count="${item.count}"
+        data-detail="${escapeHtml(detail)}"
         style="--size:${item.size}px;--x:${item.x}%;--y:${item.y}%;--delay:${index * -0.28}s"
         title="${escapeHtml(item.word)}：${item.count}"
       >
         <b>${escapeHtml(item.word)}</b>
         <small>${item.count}</small>
-      </span>
-    `).join('')
-    : '<span class="keyword-bubble empty-bubble"><b>暂无关键词</b><small>0</small></span>';
+      </span>`;
+      }).join('')}
+      <aside class="bubble-detail" id="bubbleDetail">${renderBubbleDetail(keywordBubbles[0], project)}</aside>
+    `
+    : '<span class="keyword-bubble empty-bubble"><b>暂无关键词</b><small>0</small></span><aside class="bubble-detail">添加调研证据后，将显示关键词比重和背后材料。</aside>';
 
   const ranked = rankedConcepts();
   els.rankChart.innerHTML = ranked.length
@@ -954,6 +999,7 @@ function renderVisuals() {
   renderSankeyChart(project);
   renderStudentInsights(project);
   renderTeacherInsights();
+  enhanceVisualCards();
 }
 
 function renderFunnel(project) {
@@ -977,14 +1023,14 @@ function renderFunnel(project) {
 function renderStakeholderMap(project) {
   if (!els.stakeholderMap) return;
   const scenario = `${project.title} ${project.scenario}`;
-  const people = ['目标用户', '家属/同伴', '一线服务人员', '管理者', '平台/设备'];
-  els.stakeholderMap.innerHTML = people.map((name, index) => `
-    <div class="stakeholder-node node-${index}">
-      <span>${index === 0 ? '核心' : `S${index}`}</span>
-      <b>${escapeHtml(name)}</b>
+  els.stakeholderMap.innerHTML = getStakeholderVisuals().map((item, index) => `
+    <div class="stakeholder-node node-${index}" data-stakeholder-type="${escapeHtml(item.type)}" data-tone="${escapeHtml(item.tone)}">
+      <span class="stakeholder-symbol">${escapeHtml(item.symbol)}</span>
+      <b>${escapeHtml(item.label)}</b>
+      <em>${escapeHtml(item.role)}</em>
       <small>${escapeHtml(scenario.slice(0, 18))}</small>
     </div>
-  `).join('');
+  `).join('') + '<div class="stakeholder-legend">人=目标用户  伴=陪伴者  服=一线服务  管=管理者  端=平台/设备</div>';
 }
 
 function renderKanoChart(project) {
@@ -1097,6 +1143,230 @@ function renderLiveRail() {
       <div class="teacher-mini-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>
     `).join('');
   }
+}
+
+function enhanceVisualCards() {
+  [
+    ['progressBars', '阶段进度柱状图'],
+    ['wordCloud', '调研关键词气泡云'],
+    ['competencyRadar', '能力画像雷达图'],
+    ['flowFunnel', '证据到方案漏斗图'],
+    ['stakeholderMap', '利益相关者地图'],
+    ['kanoChart', 'Kano 需求分类图'],
+    ['rankChart', 'TOPSIS 方案排序图'],
+    ['sankeyChart', '数据闭环桑基图'],
+  ].forEach(([id, title]) => {
+    const chart = document.querySelector(`#${id}`);
+    const card = chart?.closest('.visual-card, .panel');
+    if (!chart || !card || card.querySelector(`[data-viz-toolbar="${id}"]`)) return;
+    const toolbar = document.createElement('div');
+    toolbar.className = 'viz-toolbar';
+    toolbar.dataset.vizToolbar = id;
+    toolbar.innerHTML = `
+      <span>${title}</span>
+      <button type="button" data-viz-fullscreen="${id}">全屏</button>
+      <button type="button" data-viz-export="png" data-viz-target="${id}">PNG</button>
+      <button type="button" data-viz-export="svg" data-viz-target="${id}">SVG</button>
+      <button type="button" data-viz-export="json" data-viz-target="${id}">JSON</button>
+      <button type="button" data-viz-export="csv" data-viz-target="${id}">CSV</button>
+      <button type="button" data-viz-export="psd" data-viz-target="${id}">PSD说明</button>
+    `;
+    card.prepend(toolbar);
+  });
+}
+
+function handleVisualizationHover(event) {
+  const bubble = event.target.closest('.keyword-bubble[data-keyword]');
+  if (!bubble || lockedKeyword) return;
+  updateBubbleDetail(bubble);
+}
+
+function handleVisualizationClick(event) {
+  const close = event.target.closest('[data-close-viz]');
+  if (close) {
+    closeVizModal();
+    return;
+  }
+
+  const bubble = event.target.closest('.keyword-bubble[data-keyword]');
+  if (bubble) {
+    lockedKeyword = lockedKeyword === bubble.dataset.keyword ? '' : bubble.dataset.keyword;
+    document.querySelectorAll('.keyword-bubble').forEach((item) => {
+      item.classList.toggle('active', item.dataset.keyword === lockedKeyword);
+    });
+    updateBubbleDetail(bubble);
+    return;
+  }
+
+  const playButton = event.target.closest('[data-bubble-play]');
+  if (playButton) {
+    toggleBubblePlayback(playButton);
+    return;
+  }
+
+  const fullscreen = event.target.closest('[data-viz-fullscreen]');
+  if (fullscreen) {
+    openVizModal(fullscreen.dataset.vizFullscreen);
+    return;
+  }
+
+  const exportButton = event.target.closest('[data-viz-export]');
+  if (exportButton) {
+    exportVisualization(exportButton.dataset.vizTarget || els.vizModalBody?.dataset.vizId, exportButton.dataset.vizExport);
+  }
+}
+
+function updateBubbleDetail(bubble) {
+  const detail = document.querySelector('#bubbleDetail');
+  if (!detail) return;
+  detail.innerHTML = `
+    <strong>${escapeHtml(bubble.dataset.keyword)}</strong>
+    <span>权重 ${escapeHtml(bubble.dataset.count)} · ${bubbleToneLabel(bubble.dataset.tone)}</span>
+    <p>${escapeHtml(bubble.dataset.detail)}</p>
+  `;
+}
+
+function toggleBubblePlayback(button) {
+  const bubbles = [...document.querySelectorAll('.keyword-bubble[data-keyword]')];
+  if (!bubbles.length) return;
+  if (bubblePlayTimer) {
+    clearInterval(bubblePlayTimer);
+    bubblePlayTimer = null;
+    button.textContent = '播放关键词';
+    return;
+  }
+  lockedKeyword = '';
+  button.textContent = '暂停播放';
+  bubblePlayTimer = setInterval(() => {
+    bubbles.forEach((item) => item.classList.remove('active'));
+    const bubble = bubbles[bubblePlayIndex % bubbles.length];
+    bubble.classList.add('active');
+    updateBubbleDetail(bubble);
+    bubblePlayIndex += 1;
+  }, 1400);
+}
+
+function openVizModal(vizId) {
+  const source = document.querySelector(`#${vizId}`);
+  if (!source || !els.vizModal || !els.vizModalBody) return;
+  els.vizModalTitle.textContent = source.closest('.visual-card, .panel')?.querySelector('h2,h3')?.textContent || '可视化预览';
+  els.vizModalBody.dataset.vizId = vizId;
+  els.vizModalBody.innerHTML = '';
+  const clone = source.cloneNode(true);
+  clone.id = `${vizId}Fullscreen`;
+  clone.classList.add('viz-fullscreen-clone');
+  els.vizModalBody.appendChild(clone);
+  els.vizModal.hidden = false;
+}
+
+function closeVizModal() {
+  if (!els.vizModal) return;
+  els.vizModal.hidden = true;
+  els.vizModalBody.innerHTML = '';
+}
+
+function exportVisualization(vizId, format) {
+  if (!vizId || !format) return;
+  if (format === 'json') {
+    downloadText(`${vizId}.json`, JSON.stringify(activeProject(), null, 2), 'application/json');
+    return;
+  }
+  if (format === 'csv') {
+    downloadText(`${vizId}.csv`, projectToCsv(activeProject()), 'text/csv;charset=utf-8');
+    return;
+  }
+  if (format === 'psd') {
+    downloadText(`${vizId}-psd-workflow.txt`, '浏览器无法直接生成真正的 PSD 分层文件。请导出 SVG 后用 Photoshop、Illustrator、Figma 或 Photopea 打开，即可继续编辑矢量图层。', 'text/plain;charset=utf-8');
+    return;
+  }
+  const node = document.querySelector(`#${vizId}`);
+  if (!node) return;
+  const svgText = htmlToEditableSvg(node, vizId);
+  if (format === 'svg') {
+    downloadText(`${vizId}.svg`, svgText, 'image/svg+xml;charset=utf-8');
+    return;
+  }
+  exportSvgAsPng(svgText, `${vizId}.png`);
+}
+
+function htmlToEditableSvg(node, label) {
+  const rect = node.getBoundingClientRect();
+  const width = Math.max(800, Math.ceil(rect.width || 800));
+  const height = Math.max(480, Math.ceil(rect.height || 480));
+  const html = new XMLSerializer().serializeToString(node.cloneNode(true));
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+    <title>${escapeHtml(label)}</title>
+    <foreignObject width="100%" height="100%">
+      <div xmlns="http://www.w3.org/1999/xhtml">${html}</div>
+    </foreignObject>
+  </svg>`;
+}
+
+function exportSvgAsPng(svgText, filename) {
+  const image = new Image();
+  const url = URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' }));
+  image.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width || 1200;
+    canvas.height = image.height || 720;
+    canvas.getContext('2d').drawImage(image, 0, 0);
+    canvas.toBlob((blob) => {
+      if (blob) downloadBlob(filename, blob);
+      URL.revokeObjectURL(url);
+    });
+  };
+  image.src = url;
+}
+
+function keywordEvidence(word, project) {
+  const evidence = STAGES.flatMap((stage) => project.stages[stage.id]?.evidence || []);
+  const matched = evidence.find((item) => `${item.title} ${item.content}`.includes(word));
+  const fallback = evidence[0];
+  const source = matched || fallback;
+  if (!source) return '暂无可追溯调研内容。';
+  return `${source.title}：${source.content}`.slice(0, 180);
+}
+
+function renderBubbleDetail(item, project) {
+  if (!item) return '<strong>暂无关键词</strong><p>添加调研证据后，将显示词语权重和背后材料。</p>';
+  return `
+    <strong>${escapeHtml(item.word)}</strong>
+    <span>权重 ${item.count} · ${bubbleToneLabel(item.tone)}</span>
+    <p>${escapeHtml(keywordEvidence(item.word, project))}</p>
+  `;
+}
+
+function bubbleToneLabel(tone) {
+  return {
+    research: '调研证据',
+    need: '需求/痛点',
+    concept: '方案/蓝图',
+    test: '测试评估',
+  }[tone] || '综合词';
+}
+
+function projectToCsv(project) {
+  const rows = [['type', 'stage', 'title', 'value_a', 'value_b', 'content']];
+  STAGES.forEach((stage) => {
+    (project.stages[stage.id]?.evidence || []).forEach((item) => {
+      rows.push(['evidence', stage.title, item.title, '', '', item.content]);
+    });
+  });
+  project.needs.forEach((item) => rows.push(['need', '', item.title, item.importance, item.satisfaction, '']));
+  project.concepts.forEach((item) => rows.push(['concept', '', item.title, item.feasibility, item.serviceQuality, `novelty=${item.novelty};risk=${item.risk}`]));
+  return rows.map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`).join(',')).join('\n');
+}
+
+function downloadText(filename, content, type) {
+  downloadBlob(filename, new Blob([content], { type }));
+}
+
+function downloadBlob(filename, blob) {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 function buildNextStepAdvice(moduleId, project, progress, risk) {
@@ -1234,6 +1504,7 @@ function saveState() {
 }
 
 async function loadBackendState() {
+  if (isLocalSession) return;
   if (location.protocol === 'file:') return;
   try {
     const response = await apiFetch('./api/state', { cache: 'no-store' });
@@ -1309,6 +1580,61 @@ function loadModelSettings() {
     localStorage.removeItem(MODEL_SETTINGS_KEY);
   }
   return { provider: 'deepseek', providers: {} };
+}
+
+function saveLocalAccount(payload, publicUser) {
+  const accounts = loadLocalAccounts();
+  const key = localAccountKey(payload.role, payload.studentId, payload.teacherId);
+  accounts[key] = {
+    user: publicUser,
+    passwordCheck: weakPasswordCheck(payload.password),
+    updatedAt: new Date().toISOString(),
+  };
+  localStorage.setItem(LOCAL_ACCOUNTS_KEY, JSON.stringify(accounts));
+}
+
+function tryLocalLogin(payload) {
+  const key = localAccountKey(payload.role, payload.studentId, payload.teacherId);
+  const account = loadLocalAccounts()[key];
+  if (!account || account.passwordCheck !== weakPasswordCheck(payload.password)) return false;
+  currentUser = account.user;
+  activeRole = currentUser.role === 'teacher' ? 'teacher' : 'student';
+  sessionToken = `local-${key}-${Date.now()}`;
+  isLocalSession = true;
+  sessionStorage.setItem(SESSION_TOKEN_KEY, sessionToken);
+  els.authMessage.textContent = '已使用本机账号备份进入。Render 服务器账号可能已因重部署丢失，建议后续接入持久数据库。';
+  return true;
+}
+
+function loadLocalSessionUser() {
+  const match = sessionToken.match(/^local-(.+)-\d+$/);
+  if (!match) return null;
+  return loadLocalAccounts()[match[1]]?.user || null;
+}
+
+function loadLocalAccounts() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LOCAL_ACCOUNTS_KEY));
+    return saved && typeof saved === 'object' ? saved : {};
+  } catch {
+    localStorage.removeItem(LOCAL_ACCOUNTS_KEY);
+    return {};
+  }
+}
+
+function localAccountKey(role, studentId, teacherId) {
+  const normalizedRole = role === 'teacher' ? 'teacher' : 'student';
+  const identity = normalizedRole === 'teacher' ? teacherId : studentId;
+  return `${normalizedRole}:${String(identity || '').trim()}`;
+}
+
+function weakPasswordCheck(password) {
+  let hash = 2166136261;
+  String(password || '').split('').forEach((char) => {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  });
+  return (hash >>> 0).toString(16);
 }
 
 function createSampleState() {

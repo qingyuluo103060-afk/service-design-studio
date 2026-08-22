@@ -403,6 +403,16 @@ export function mapKeywordsToBubbles(keywords) {
   });
 }
 
+export function getStakeholderVisuals() {
+  return [
+    { type: 'core-user', symbol: '人', label: '目标用户', role: '核心体验者', tone: 'user' },
+    { type: 'companion', symbol: '伴', label: '家属/同伴', role: '陪伴与协助者', tone: 'companion' },
+    { type: 'frontline', symbol: '服', label: '一线服务人员', role: '触点执行者', tone: 'frontline' },
+    { type: 'manager', symbol: '管', label: '管理者', role: '规则与资源配置者', tone: 'manager' },
+    { type: 'platform', symbol: '端', label: '平台/设备', role: '技术与物理载体', tone: 'platform' },
+  ];
+}
+
 function keywordTone(word) {
   const text = String(word || '');
   if (/(需求|痛点|满意|等待|问题|断点)/.test(text)) return 'need';

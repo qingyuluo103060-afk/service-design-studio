@@ -8,6 +8,7 @@ import {
   createGroups,
   COURSE_MODULES,
   getVisibleModules,
+  getStakeholderVisuals,
   mapKeywordsToBubbles,
   getRiskStatus,
   getStageToolkit,
@@ -117,6 +118,11 @@ assert.equal(keywordBubbles.length, 3);
 assert.ok(keywordBubbles[0].size > keywordBubbles[1].size && keywordBubbles[1].size > keywordBubbles[2].size);
 assert.ok(keywordBubbles.every((item) => item.x >= 8 && item.x <= 92 && item.y >= 12 && item.y <= 88));
 assert.equal(keywordBubbles[1].tone, 'need');
+
+const stakeholderVisuals = getStakeholderVisuals();
+assert.equal(stakeholderVisuals.length, 5);
+assert.deepEqual(stakeholderVisuals.map((item) => item.type), ['core-user', 'companion', 'frontline', 'manager', 'platform']);
+assert.ok(stakeholderVisuals.every((item) => item.symbol && item.label && item.role));
 
 const validState = validateClassroomState({
   studentText: '20260101 陈一 产品设计1班',
