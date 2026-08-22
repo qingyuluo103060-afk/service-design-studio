@@ -38,6 +38,9 @@ let accessCode = sessionStorage.getItem(ACCESS_CODE_KEY) || '';
 let sessionToken = sessionStorage.getItem(SESSION_TOKEN_KEY) || '';
 let modelSettings = loadModelSettings();
 let activeAuthMode = 'login';
+let activeLoginRole = 'student';
+let activeRegisterRole = 'student';
+let currentUser = null;
 let activeRole = 'teacher';
 let activeGroupId = state.groups[0]?.id || 'g1';
 let activeStageId = 'empathy';
@@ -82,12 +85,18 @@ const els = {
   loginForm: document.querySelector('#loginForm'),
   registerForm: document.querySelector('#registerForm'),
   codeForm: document.querySelector('#codeForm'),
+  loginRoleChoice: document.querySelector('#loginRoleChoice'),
+  registerRoleChoice: document.querySelector('#registerRoleChoice'),
+  loginIdentityLabel: document.querySelector('#loginIdentityLabel'),
   loginStudentId: document.querySelector('#loginStudentId'),
   loginPassword: document.querySelector('#loginPassword'),
   loginAccount: document.querySelector('#loginAccount'),
   registerName: document.querySelector('#registerName'),
+  registerClassField: document.querySelector('#registerClassField'),
   registerClass: document.querySelector('#registerClass'),
+  registerIdentityLabel: document.querySelector('#registerIdentityLabel'),
   registerStudentId: document.querySelector('#registerStudentId'),
+  registerIdentityHint: document.querySelector('#registerIdentityHint'),
   registerPassword: document.querySelector('#registerPassword'),
   registerAccount: document.querySelector('#registerAccount'),
   accessCodeInput: document.querySelector('#accessCodeInput'),
@@ -102,6 +111,11 @@ const els = {
   modelPrompt: document.querySelector('#modelPrompt'),
   generateWithModel: document.querySelector('#generateWithModel'),
   modelResult: document.querySelector('#modelResult'),
+  userProfile: document.querySelector('#userProfile'),
+  userAvatar: document.querySelector('#userAvatar'),
+  userName: document.querySelector('#userName'),
+  userMeta: document.querySelector('#userMeta'),
+  logoutAccount: document.querySelector('#logoutAccount'),
 };
 
 init();
@@ -116,6 +130,7 @@ async function init() {
     showAuthGate();
     return;
   }
+  await loadCurrentUser();
   await loadBackendState();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -125,6 +140,10 @@ async function init() {
 function bindEvents() {
   els.roleButtons.forEach((button) => {
     button.addEventListener('click', () => {
+      if (currentUser?.role === 'student' && button.dataset.role === 'teacher') {
+        window.alert('学生账号只能使用学生端。');
+        return;
+      }
       activeRole = button.dataset.role;
       render();
     });
@@ -253,9 +272,22 @@ function bindEvents() {
     activeAuthMode = button.dataset.authMode;
     renderAuthMode();
   });
+  els.loginRoleChoice.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-login-role]');
+    if (!button) return;
+    activeLoginRole = button.dataset.loginRole;
+    renderAuthRoleForms();
+  });
+  els.registerRoleChoice.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-register-role]');
+    if (!button) return;
+    activeRegisterRole = button.dataset.registerRole;
+    renderAuthRoleForms();
+  });
   els.loginAccount.addEventListener('click', loginAccount);
   els.registerAccount.addEventListener('click', registerAccount);
   els.unlockApp.addEventListener('click', unlockWithAccessCode);
+  els.logoutAccount.addEventListener('click', logoutAccount);
   els.saveModelSettings.addEventListener('click', saveModelSettings);
   els.modelProvider.addEventListener('change', () => {
     modelSettings.provider = els.modelProvider.value;
@@ -336,20 +368,48 @@ function renderAuthMode() {
   els.loginForm.hidden = activeAuthMode !== 'login';
   els.registerForm.hidden = activeAuthMode !== 'register';
   els.codeForm.hidden = activeAuthMode !== 'code';
+  renderAuthRoleForms();
+}
+
+function renderAuthRoleForms() {
+  els.loginRoleChoice.querySelectorAll('[data-login-role]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.loginRole === activeLoginRole);
+  });
+  els.registerRoleChoice.querySelectorAll('[data-register-role]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.registerRole === activeRegisterRole);
+  });
+
+  const loginIsTeacher = activeLoginRole === 'teacher';
+  els.loginIdentityLabel.textContent = loginIsTeacher ? '工号' : '学号';
+  els.loginStudentId.maxLength = loginIsTeacher ? 8 : 9;
+  els.loginStudentId.placeholder = loginIsTeacher ? '021XXXXX' : '21XX17XXX';
+
+  const registerIsTeacher = activeRegisterRole === 'teacher';
+  els.registerClassField.hidden = registerIsTeacher;
+  els.registerIdentityLabel.textContent = registerIsTeacher ? '工号' : '学号';
+  els.registerStudentId.maxLength = registerIsTeacher ? 8 : 9;
+  els.registerStudentId.placeholder = registerIsTeacher ? '8位数字，如 02112345' : '9位数字，如 210117001';
+  els.registerIdentityHint.textContent = registerIsTeacher
+    ? '教师工号规则：8 位数字，前三位固定为 021。'
+    : '学号规则：9 位数字，第 1-2 位为 21，第 5-6 位为 17。';
 }
 
 async function loginAccount() {
   await authenticateAccount('./api/auth/login', {
+    role: activeLoginRole,
     studentId: els.loginStudentId.value,
+    teacherId: els.loginStudentId.value,
     password: els.loginPassword.value,
   });
 }
 
 async function registerAccount() {
   await authenticateAccount('./api/auth/register', {
+    role: activeRegisterRole,
     name: els.registerName.value,
-    className: els.registerClass.value,
+    className: activeRegisterRole === 'student' ? els.registerClass.value : '',
     studentId: els.registerStudentId.value,
+    teacherId: els.registerStudentId.value,
     password: els.registerPassword.value,
   });
 }
@@ -369,10 +429,13 @@ async function authenticateAccount(url, payload) {
       return;
     }
     sessionToken = result.token;
+    currentUser = result.user || null;
+    applyRolePermissions();
     accessCode = '';
     sessionStorage.setItem(SESSION_TOKEN_KEY, sessionToken);
     sessionStorage.removeItem(ACCESS_CODE_KEY);
     hideAuthGate();
+    renderUserProfile();
     await loadBackendState();
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -390,6 +453,16 @@ function setAuthBusy(isBusy) {
   els.loginAccount.disabled = isBusy;
   els.registerAccount.disabled = isBusy;
   els.unlockApp.disabled = isBusy;
+}
+
+function logoutAccount() {
+  sessionToken = '';
+  accessCode = '';
+  currentUser = null;
+  sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  sessionStorage.removeItem(ACCESS_CODE_KEY);
+  renderUserProfile();
+  showAuthGate('已退出，请重新登录。');
 }
 
 async function unlockWithAccessCode() {
@@ -410,7 +483,10 @@ async function unlockWithAccessCode() {
     }
     sessionStorage.setItem(ACCESS_CODE_KEY, accessCode);
     sessionStorage.removeItem(SESSION_TOKEN_KEY);
+    currentUser = { name: '教师口令', role: 'teacher', teacherId: 'access-code' };
+    applyRolePermissions();
     hideAuthGate();
+    renderUserProfile();
     await loadBackendState();
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -551,6 +627,7 @@ function buildCurrentModelContext() {
 }
 
 function render() {
+  applyRolePermissions();
   els.body.classList.toggle('student-mode', activeRole === 'student');
   els.roleButtons.forEach((button) => button.classList.toggle('active', button.dataset.role === activeRole));
   renderStages();
@@ -562,6 +639,60 @@ function render() {
   renderNeeds();
   renderConcepts();
   renderLight();
+}
+
+async function loadCurrentUser() {
+  if (!sessionToken || location.protocol === 'file:') {
+    renderUserProfile();
+    return;
+  }
+  try {
+    const response = await apiFetch('./api/me', { cache: 'no-store' });
+    if (!response.ok) {
+      currentUser = null;
+      sessionToken = '';
+      sessionStorage.removeItem(SESSION_TOKEN_KEY);
+      return;
+    }
+    const result = await response.json();
+    currentUser = result.user || null;
+    applyRolePermissions();
+    renderUserProfile();
+  } catch {
+    renderUserProfile();
+  }
+}
+
+function applyRolePermissions() {
+  if (currentUser?.role === 'student') {
+    activeRole = 'student';
+  }
+  els.roleButtons.forEach((button) => {
+    const locked = currentUser?.role === 'student' && button.dataset.role === 'teacher';
+    button.disabled = locked;
+    button.title = locked ? '学生账号不能进入教师端' : '';
+    button.classList.toggle('locked', locked);
+  });
+}
+
+function renderUserProfile() {
+  const hasUser = Boolean(currentUser || accessCode);
+  els.userProfile.hidden = !hasUser;
+  els.logoutAccount.hidden = !hasUser;
+  if (!hasUser) return;
+  const user = currentUser || { name: '教师口令', role: 'teacher' };
+  const identity = user.role === 'teacher'
+    ? `教师 · ${user.teacherId || '口令进入'}`
+    : `学生 · ${user.studentId || ''}${user.className ? ` · ${user.className}` : ''}`;
+  els.userName.textContent = user.name || '未命名用户';
+  els.userMeta.textContent = identity;
+  els.userAvatar.textContent = buildAvatarText(user.name || user.role);
+}
+
+function buildAvatarText(name) {
+  const text = String(name || 'SD').trim();
+  if (!text) return 'SD';
+  return text.slice(0, 2).toUpperCase();
 }
 
 function renderLight() {
