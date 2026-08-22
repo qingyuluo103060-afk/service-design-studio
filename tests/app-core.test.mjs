@@ -6,11 +6,21 @@ import {
   calculateStageProgress,
   classifyKano,
   createGroups,
+  COURSE_MODULES,
+  getVisibleModules,
   getRiskStatus,
   getStageToolkit,
   rankByTopsis,
   validateClassroomState,
 } from '../src/app-core.mjs';
+
+const studentModules = getVisibleModules('student').map((item) => item.id);
+const teacherModules = getVisibleModules('teacher').map((item) => item.id);
+assert.ok(COURSE_MODULES.length >= 8, 'course workspace should expose a full service design module set');
+assert.ok(studentModules.includes('research') && studentModules.includes('testing'));
+assert.ok(!studentModules.includes('teacher-dashboard'), 'students should not see teacher dashboard module');
+assert.ok(teacherModules.includes('teacher-dashboard') && teacherModules.includes('class-management'));
+assert.ok(COURSE_MODULES.every((item) => item.icon && item.group), 'each module needs a sidebar icon and group');
 
 const students = [
   { id: 's1', name: '陈一', className: '产品设计1班' },
