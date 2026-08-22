@@ -10,6 +10,7 @@ import {
   createGroups,
   COURSE_MODULES,
   METHOD_TASK_CHAIN,
+  METHOD_PROCESS_TEMPLATES,
   buildMethodTaskPlan,
   summarizeMethodTaskProgress,
   getVisibleModules,
@@ -34,6 +35,9 @@ assert.deepEqual(
   ['topic', 'literature', 'research', 'coding', 'kanoAhp', 'triz', 'topsisBlueprint', 'testingReport'],
   'method chain must keep topic, literature support, research, analysis, method, evaluation, output order',
 );
+assert.ok(METHOD_PROCESS_TEMPLATES.some((item) => item.id === 'kano' && item.rows.some((row) => row[0].includes('Better'))));
+assert.ok(METHOD_PROCESS_TEMPLATES.some((item) => item.id === 'ahp' && item.steps.some((step) => step.includes('CR'))));
+assert.ok(METHOD_PROCESS_TEMPLATES.some((item) => item.id === 'topsis' && item.steps.some((step) => step.includes('贴近度'))));
 
 const students = [
   { id: 's1', name: '陈一', className: '产品设计1班' },
