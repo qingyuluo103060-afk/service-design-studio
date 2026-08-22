@@ -251,6 +251,18 @@ async function routeRequest(request, response, context) {
     return;
   }
 
+  if (url.pathname === '/api/llm/check' && request.method === 'POST') {
+    if (!requireAccess(request, response, context)) return;
+    const body = JSON.parse(await readBody(request) || '{}');
+    sendJson(response, 200, await callModel({
+      ...body,
+      prompt: '请只回复“连接成功”。这是《服务设计》课程平台的大模型连通性测试。',
+      context: { purpose: 'model connectivity check' },
+      maxTokens: 64,
+    }, context.env, context.fetchImpl));
+    return;
+  }
+
   if (url.pathname === '/api/literature/search' && request.method === 'POST') {
     if (!requireAccess(request, response, context)) return;
     const body = JSON.parse(await readBody(request) || '{}');
@@ -329,6 +341,7 @@ async function callModel(payload, env, fetchImpl) {
     body: JSON.stringify({
       model,
       temperature: 0.4,
+      max_tokens: Math.max(32, Math.min(2048, Number(payload.maxTokens) || 1200)),
       messages: [
         {
           role: 'system',
