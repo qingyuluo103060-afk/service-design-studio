@@ -7,6 +7,9 @@ import {
   classifyKano,
   createGroups,
   COURSE_MODULES,
+  METHOD_TASK_CHAIN,
+  buildMethodTaskPlan,
+  summarizeMethodTaskProgress,
   getVisibleModules,
   getStakeholderVisuals,
   mapKeywordsToBubbles,
@@ -23,6 +26,11 @@ assert.ok(studentModules.includes('research') && studentModules.includes('testin
 assert.ok(!studentModules.includes('teacher-dashboard'), 'students should not see teacher dashboard module');
 assert.ok(teacherModules.includes('teacher-dashboard') && teacherModules.includes('class-management'));
 assert.ok(COURSE_MODULES.every((item) => item.icon && item.group), 'each module needs a sidebar icon and group');
+assert.deepEqual(
+  METHOD_TASK_CHAIN.map((task) => task.id),
+  ['topic', 'literature', 'research', 'coding', 'kanoAhp', 'triz', 'topsisBlueprint', 'testingReport'],
+  'method chain must keep topic, literature support, research, analysis, method, evaluation, output order',
+);
 
 const students = [
   { id: 's1', name: '陈一', className: '产品设计1班' },
@@ -163,6 +171,29 @@ assert.equal(validState.ok, true);
 assert.equal(validState.value.groups[0].project.title, '导诊服务');
 assert.equal(validState.value.groups[0].roles.s1, '用户访谈');
 assert.equal(validateClassroomState({ groups: [] }).ok, false);
+
+const methodPlan = buildMethodTaskPlan({
+  title: '医院导诊服务优化',
+  scenario: '围绕老年患者就医导诊的信息断点进行服务设计。',
+  stages: {
+    empathy: { evidence: [{ title: '访谈', content: '老年患者不知道下一步去哪里。' }] },
+    define: { evidence: [] },
+    prototype: { evidence: [] },
+  },
+  needs: [{ title: '候诊提醒', importance: 5, satisfaction: 2 }],
+  concepts: [],
+  feedback: [],
+  taskStatus: { topic: { completed: true } },
+  literatureReview: { result: '已有文献关注医疗服务体验，但导诊信息触点仍可深化。' },
+});
+assert.equal(methodPlan.length, METHOD_TASK_CHAIN.length);
+assert.equal(methodPlan[0].completed, true);
+assert.equal(methodPlan[1].autoReady, true, 'literature task should be ready after literature result exists');
+assert.equal(methodPlan[2].autoReady, false, 'research task should require enough field evidence before auto-ready');
+assert.ok(methodPlan[4].outputs.some((item) => item.includes('Kano')));
+const taskSummary = summarizeMethodTaskProgress(methodPlan);
+assert.ok(taskSummary.completed >= 2);
+assert.equal(taskSummary.total, METHOD_TASK_CHAIN.length);
 
 const empathyToolkit = getStageToolkit('empathy');
 assert.equal(empathyToolkit.symbol, '探');
