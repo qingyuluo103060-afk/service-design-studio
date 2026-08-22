@@ -7,15 +7,28 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260723-rolefix" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260822-workspace" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
+      <div class="welcome-panel">
+        <span class="brand-mark">SD</span>
+        <p class="eyebrow">Service Design Studio</p>
+        <h1>服务设计智慧课程工作台</h1>
+        <p>围绕“三阶双融、五环赋能、三域协同、数据闭环”，把选题、调研、画像、需求、方案、蓝图、测试与 AI 反馈整合到同一个课堂流程中。</p>
+        <div class="welcome-flow">
+          <span>探</span><b>选题调研</b>
+          <span>像</span><b>用户画像</b>
+          <span>筛</span><b>需求筛选</b>
+          <span>案</span><b>方案迭代</b>
+          <span>评</span><b>测试评估</b>
+        </div>
+      </div>
       <div class="auth-card">
         <span class="brand-mark">SD</span>
         <p class="eyebrow">Public Classroom</p>
         <h2>进入服务设计课堂</h2>
-        <p class="muted">学生用学号注册后进入项目工作台。大模型 API Key 由本人填写，默认只保存在当前浏览器。</p>
+        <p class="muted">学生用学号注册，教师用工号注册。大模型 API Key 由每位用户自行填写，默认只保存在当前浏览器。</p>
         <div id="authTabs" class="auth-tabs">
           <button class="segmented active" data-auth-mode="login">登录</button>
           <button class="segmented" data-auth-mode="register">注册</button>
@@ -26,14 +39,8 @@
             <button type="button" class="segmented active" data-login-role="student">学生</button>
             <button type="button" class="segmented" data-login-role="teacher">教师</button>
           </div>
-          <label>
-            <span id="loginIdentityLabel">学号</span>
-            <input id="loginStudentId" type="text" inputmode="numeric" autocomplete="username" maxlength="9" placeholder="21XX17XXX" />
-          </label>
-          <label>
-            密码
-            <input id="loginPassword" type="password" autocomplete="current-password" />
-          </label>
+          <label><span id="loginIdentityLabel">学号</span><input id="loginStudentId" type="text" inputmode="numeric" autocomplete="username" maxlength="9" placeholder="21XX17XXX" /></label>
+          <label>密码<input id="loginPassword" type="password" autocomplete="current-password" /></label>
           <button id="loginAccount">登录工作台</button>
         </div>
         <div id="registerForm" class="auth-form" hidden>
@@ -41,41 +48,27 @@
             <button type="button" class="segmented active" data-register-role="student">学生</button>
             <button type="button" class="segmented" data-register-role="teacher">教师</button>
           </div>
-          <label>
-            姓名
-            <input id="registerName" type="text" autocomplete="name" />
-          </label>
-          <label id="registerClassField">
-            班级
-            <input id="registerClass" type="text" placeholder="产品设计1班" />
-          </label>
-          <label>
-            <span id="registerIdentityLabel">学号</span>
-            <input id="registerStudentId" type="text" inputmode="numeric" maxlength="9" placeholder="9位数字，如 210117001" />
-          </label>
+          <label>姓名<input id="registerName" type="text" autocomplete="name" /></label>
+          <label id="registerClassField">班级<input id="registerClass" type="text" placeholder="产品设计1班" /></label>
+          <label><span id="registerIdentityLabel">学号</span><input id="registerStudentId" type="text" inputmode="numeric" maxlength="9" placeholder="9位数字，如 210117001" /></label>
           <p id="registerIdentityHint" class="field-hint">学号规则：9 位数字，第 1-2 位为 21，第 5-6 位为 17。</p>
-          <label>
-            密码
-            <input id="registerPassword" type="password" autocomplete="new-password" placeholder="至少 6 位" />
-          </label>
+          <label>密码<input id="registerPassword" type="password" autocomplete="new-password" placeholder="至少 6 位" /></label>
           <button id="registerAccount">注册并进入</button>
         </div>
         <div id="codeForm" class="auth-form" hidden>
-          <label>
-            教师课堂口令
-            <input id="accessCodeInput" type="password" autocomplete="current-password" placeholder="请输入教师提供的口令" />
-          </label>
+          <label>教师课堂口令<input id="accessCodeInput" type="password" autocomplete="current-password" placeholder="请输入教师提供的口令" /></label>
           <button id="unlockApp">用口令进入</button>
         </div>
         <p id="authMessage" class="form-message"></p>
       </div>
     </section>
+
     <div class="app-shell">
       <header class="command-bar">
         <div class="brand-block">
           <span class="brand-mark">SD</span>
           <div>
-            <p class="eyebrow">三阶双融 · 五环赋能 · 数据闭环</p>
+            <p class="eyebrow">三阶双融 · 五环赋能 · 三域协同 · 数据闭环</p>
             <h1>服务设计智慧工作台</h1>
           </div>
         </div>
@@ -86,226 +79,132 @@
           </div>
           <div id="userProfile" class="user-profile" hidden>
             <span id="userAvatar" class="user-avatar">SD</span>
-            <span>
-              <strong id="userName">未登录</strong>
-              <small id="userMeta">访客</small>
-            </span>
+            <span><strong id="userName">未登录</strong><small id="userMeta">访客</small></span>
           </div>
           <button id="logoutAccount" class="ghost" hidden>退出</button>
-          <button id="importData" class="ghost">导入数据</button>
-          <input id="importFile" type="file" accept="application/json,.json" hidden />
-          <button id="exportData" class="ghost">导出数据</button>
-          <button id="resetDemo" class="ghost">重置示例</button>
         </div>
       </header>
 
-      <section class="dashboard" aria-label="教学驾驶舱">
-        <article class="hero-card">
-          <p class="eyebrow" id="activeStageLabel">探索与共情</p>
-          <h2 id="activeProjectTitle">项目工作区</h2>
-          <p class="hero-copy">围绕真实服务场景沉淀调研证据、需求判断、方案评价和迭代记录。</p>
-        </article>
-        <article class="stat-card primary-stat">
-          <span id="overallProgress">0%</span>
-          <small>总体闭环进度</small>
-        </article>
-        <article class="stat-card">
-          <span id="dashboardEvidence">0</span>
-          <small>过程证据</small>
-        </article>
-        <article class="stat-card">
-          <span id="dashboardNeeds">0</span>
-          <small>需求条目</small>
-        </article>
-        <article class="stat-card risk-stat">
-          <span id="dashboardRisk">待诊断</span>
-          <small>课堂风险</small>
-        </article>
-      </section>
-
-      <main class="layout">
-        <aside class="left-rail">
-          <section class="panel teacher-only import-panel">
-            <div class="panel-title">
-              <div>
-                <p class="eyebrow">Class</p>
-                <h2>班级与分组</h2>
-              </div>
-            </div>
-            <label for="studentList">学生名单</label>
-            <textarea id="studentList" rows="7" placeholder="每行：学号 姓名 班级"></textarea>
-            <div class="inline-controls">
-              <label for="groupSize">每组人数</label>
-              <input id="groupSize" type="number" min="1" max="8" value="5" />
-              <button id="buildGroups">生成分组</button>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-title">
-              <div>
-                <p class="eyebrow">Process</p>
-                <h2>三阶项目流程</h2>
-              </div>
-            </div>
-            <nav id="stageNav" class="stage-timeline"></nav>
-          </section>
-
-          <section class="panel">
-            <div class="panel-title">
-              <div>
-                <p class="eyebrow">Teams</p>
-                <h2>小组项目</h2>
-              </div>
-            </div>
-            <div id="groupList" class="group-list"></div>
-          </section>
+      <main class="workspace-shell">
+        <aside class="module-sidebar">
+          <div class="sidebar-head">
+            <p class="eyebrow">Course Modules</p>
+            <h2>课程流程</h2>
+            <small id="workspaceRoleHint">按角色显示可用模块</small>
+          </div>
+          <nav id="moduleNav" class="module-nav" aria-label="课程模块导航"></nav>
+          <nav id="stageNav" hidden></nav>
         </aside>
 
-        <section class="workbench">
-          <section class="panel project-panel">
-            <div class="panel-title">
-              <div>
-                <p class="eyebrow">Project Brief</p>
-                <h2>项目定义</h2>
-              </div>
-              <span class="status-chip">真实场景驱动</span>
+        <section class="workspace-main">
+          <section class="workspace-hero">
+            <div>
+              <p class="eyebrow" id="activeStageLabel">探索与共情</p>
+              <h2 id="activeProjectTitle">项目工作区</h2>
+              <p class="hero-copy">左侧选择课程模块，右侧完成输入、查看图表与生成 AI 建议。</p>
             </div>
-            <div class="form-grid">
-              <label>
-                项目主题
-                <input id="projectTitle" type="text" />
-              </label>
-              <label>
-                真实服务场景
-                <textarea id="projectScenario" rows="4"></textarea>
-              </label>
+            <div class="hero-stats">
+              <article class="stat-card primary-stat"><span id="overallProgress">0%</span><small>总体闭环进度</small></article>
+              <article class="stat-card"><span id="dashboardEvidence">0</span><small>过程证据</small></article>
+              <article class="stat-card"><span id="dashboardNeeds">0</span><small>需求条目</small></article>
+              <article class="stat-card risk-stat"><span id="dashboardRisk">待诊断</span><small>课堂风险</small></article>
             </div>
           </section>
 
-          <section class="panel toolkit-panel">
-            <div class="panel-title">
-              <div>
-                <p class="eyebrow">Method Toolkit</p>
-                <h2>当前阶段工具</h2>
-              </div>
-              <span id="stageOutcome" class="status-chip">方法链 × AI链</span>
-            </div>
-            <div id="methodToolkit" class="toolkit-grid"></div>
-          </section>
-
-          <section class="panel task-panel">
-            <div class="panel-title">
-              <div>
-                <p class="eyebrow">Current Task</p>
-                <h2 id="stageTitle">阶段任务</h2>
-                <p id="stageFocus" class="muted"></p>
-              </div>
-              <button id="addEvidence">添加证据</button>
-            </div>
-            <div id="evidenceList" class="evidence-grid"></div>
-          </section>
-
-          <section class="method-grid">
-            <section class="panel">
-              <div class="panel-title">
-                <div>
-                  <p class="eyebrow">Needs</p>
-                  <h2>需求筛选</h2>
-                </div>
-                <button id="addNeed" class="ghost">添加需求</button>
-              </div>
-              <div id="needList" class="compact-list"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-title">
-                <div>
-                  <p class="eyebrow">Concepts</p>
-                  <h2>方案评价</h2>
-                </div>
-                <button id="addConcept" class="ghost">添加方案</button>
-              </div>
-              <div id="conceptList" class="compact-list"></div>
-            </section>
-          </section>
-
-          <section class="panel feedback-center">
-            <div class="panel-title">
-              <div>
-                <p class="eyebrow">Learning Feedback</p>
-                <h2>学习反馈中心</h2>
-              </div>
-              <span class="status-chip">提交-诊断-反馈-修改-再提交</span>
-            </div>
+          <section id="module-overview" class="workspace-module active">
+            <div class="module-title-row"><div><p class="eyebrow">Dashboard</p><h2>项目总览</h2></div><span class="status-chip">数据闭环</span></div>
             <div class="visual-grid">
-              <div class="visual-card">
-                <h3>阶段进度</h3>
-                <div id="progressBars"></div>
-              </div>
-              <div class="visual-card">
-                <h3>调研关键词</h3>
-                <div id="wordCloud" class="word-cloud"></div>
-              </div>
-              <div class="visual-card">
-                <h3>方案 TOPSIS 排序</h3>
-                <div id="rankChart"></div>
-              </div>
-              <div class="visual-card radar-card">
-                <h3>能力画像</h3>
-                <div id="competencyRadar" class="radar-wrap"></div>
-              </div>
+              <div class="visual-card"><h3>阶段进度</h3><div id="progressBars"></div></div>
+              <div class="visual-card"><h3>调研关键词文字云</h3><div id="wordCloud" class="word-cloud"></div></div>
+              <div class="visual-card"><h3>能力画像雷达图</h3><div id="competencyRadar" class="radar-wrap"></div></div>
+              <div class="visual-card"><h3>证据到方案漏斗</h3><div id="flowFunnel" class="funnel-chart"></div></div>
             </div>
+          </section>
+
+          <section id="module-research" class="workspace-module">
+            <section class="panel project-panel">
+              <div class="panel-title"><div><p class="eyebrow">Project Brief</p><h2>选题方向与服务场景</h2></div><span class="status-chip">真实场景驱动</span></div>
+              <div class="form-grid">
+                <label>项目主题<input id="projectTitle" type="text" /></label>
+                <label>真实服务场景<textarea id="projectScenario" rows="4"></textarea></label>
+              </div>
+            </section>
+            <section class="panel task-panel">
+              <div class="panel-title"><div><p class="eyebrow">Research Evidence</p><h2 id="stageTitle">阶段任务</h2><p id="stageFocus" class="muted"></p></div><button id="addEvidence">添加证据</button></div>
+              <div id="evidenceList" class="evidence-grid"></div>
+            </section>
+          </section>
+
+          <section id="module-persona" class="workspace-module">
+            <div class="split-grid">
+              <section class="panel toolkit-panel">
+                <div class="panel-title"><div><p class="eyebrow">Method Toolkit</p><h2>用户画像与利益相关者方法</h2></div><span id="stageOutcome" class="status-chip">方法链 × AI链</span></div>
+                <div id="methodToolkit" class="toolkit-grid"></div>
+              </section>
+              <section class="panel"><div class="panel-title"><div><p class="eyebrow">Stakeholders</p><h2>利益相关者关系图</h2></div></div><div id="stakeholderMap" class="stakeholder-map"></div></section>
+            </div>
+          </section>
+
+          <section id="module-needs" class="workspace-module">
+            <div class="split-grid">
+              <section class="panel"><div class="panel-title"><div><p class="eyebrow">Needs</p><h2>需求筛选</h2></div><button id="addNeed" class="ghost">添加需求</button></div><div id="needList" class="compact-list"></div></section>
+              <section class="panel"><div class="panel-title"><div><p class="eyebrow">Kano / AHP</p><h2>需求分类图</h2></div></div><div id="kanoChart" class="kano-chart"></div></section>
+            </div>
+          </section>
+
+          <section id="module-concepts" class="workspace-module">
+            <div class="split-grid">
+              <section class="panel"><div class="panel-title"><div><p class="eyebrow">Concepts</p><h2>方案生成与筛选</h2></div><button id="addConcept" class="ghost">添加方案</button></div><div id="conceptList" class="compact-list"></div></section>
+              <section class="panel"><div class="panel-title"><div><p class="eyebrow">TOPSIS</p><h2>方案排序柱状图</h2></div></div><div id="rankChart"></div></section>
+            </div>
+          </section>
+
+          <section id="module-blueprint" class="workspace-module">
+            <section class="panel"><div class="panel-title"><div><p class="eyebrow">Blueprint</p><h2>服务蓝图与成果表达</h2></div><span class="status-chip">触点 · 前台 · 后台 · 证据</span></div><div id="sankeyChart" class="sankey-chart"></div></section>
+          </section>
+
+          <section id="module-testing" class="workspace-module">
+            <section class="panel"><div class="panel-title"><div><p class="eyebrow">Evaluation</p><h2>测试与评估</h2></div><span class="status-chip">SERVQUAL × TOPSIS</span></div><div id="studentInsights" class="insight-grid"></div></section>
+          </section>
+
+          <section id="module-ai-settings" class="workspace-module">
+            <section class="panel sticky-panel">
+              <div class="panel-title"><div><p class="eyebrow">AI Coach</p><h2>AI 方法助手</h2></div></div>
+              <p class="muted">每位用户可自主接入个人大模型 API Key，用于生成调研、需求、方案和测试建议。</p>
+              <div id="assistantAdvice" class="advice-list"></div>
+              <div class="model-box ai-panel">
+                <div class="panel-title compact-title"><div><p class="eyebrow">LLM Gateway</p><h3>大模型协同</h3></div><span id="modelStatus" class="status-chip">未连接</span></div>
+                <label>选择模型<select id="modelProvider"></select></label>
+                <div class="model-config-grid">
+                  <label>个人 API Key<input id="modelApiKey" type="password" autocomplete="off" placeholder="仅保存在当前浏览器" /></label>
+                  <label>模型名<input id="modelName" type="text" placeholder="deepseek-chat / gpt-4o-mini" /></label>
+                </div>
+                <label>自定义 Base URL（可选）<input id="modelBaseUrl" type="url" placeholder="通常可留空，使用默认接口地址" /></label>
+                <button id="saveModelSettings" class="ghost">保存我的模型设置</button>
+                <label>任务说明<textarea id="modelPrompt" rows="5" placeholder="例如：请根据当前阶段证据，生成下一轮访谈问题和需求筛选建议。"></textarea></label>
+                <button id="generateWithModel">生成建议</button>
+                <div id="modelResult" class="model-result">请先填写并保存个人 API Key，再生成针对当前项目的服务设计建议。</div>
+              </div>
+            </section>
+          </section>
+
+          <section id="module-teacher-dashboard" class="workspace-module teacher-only">
+            <section class="panel"><div class="panel-title"><div><p class="eyebrow">Teacher Analytics</p><h2>教师端课堂统计</h2></div><span class="status-chip">全班视图</span></div><div id="teacherInsights" class="visual-grid"></div></section>
+          </section>
+
+          <section id="module-class-management" class="workspace-module teacher-only">
+            <section class="panel import-panel">
+              <div class="panel-title"><div><p class="eyebrow">Class</p><h2>班级与分组</h2></div></div>
+              <label for="studentList">学生名单</label>
+              <textarea id="studentList" rows="7" placeholder="每行：学号 姓名 班级"></textarea>
+              <div class="inline-controls"><label for="groupSize">每组人数</label><input id="groupSize" type="number" min="1" max="8" value="5" /><button id="buildGroups">生成分组</button></div>
+              <div class="data-actions"><button id="importData" class="ghost">导入数据</button><input id="importFile" type="file" accept="application/json,.json" hidden /><button id="exportData" class="ghost">导出数据</button><button id="resetDemo" class="ghost">重置示例</button></div>
+              <div id="groupList" class="group-list"></div>
+            </section>
           </section>
         </section>
-
-        <aside class="assistant">
-          <section class="panel sticky-panel">
-            <div class="panel-title">
-              <div>
-                <p class="eyebrow">AI Coach</p>
-                <h2>AI 方法助手</h2>
-              </div>
-            </div>
-            <p class="muted">一期为规则型智能提示，后续可接入多模型网关。</p>
-            <div id="assistantAdvice" class="advice-list"></div>
-            <div class="model-box ai-panel">
-              <div class="panel-title compact-title">
-                <div>
-                  <p class="eyebrow">LLM Gateway</p>
-                  <h3>大模型协同</h3>
-                </div>
-                <span id="modelStatus" class="status-chip">未连接</span>
-              </div>
-              <label>
-                选择模型
-                <select id="modelProvider"></select>
-              </label>
-              <div class="model-config-grid">
-                <label>
-                  个人 API Key
-                  <input id="modelApiKey" type="password" autocomplete="off" placeholder="仅保存在当前浏览器" />
-                </label>
-                <label>
-                  模型名
-                  <input id="modelName" type="text" placeholder="deepseek-chat / gpt-4o-mini" />
-                </label>
-              </div>
-              <label>
-                自定义 Base URL（可选）
-                <input id="modelBaseUrl" type="url" placeholder="通常可留空，使用默认接口地址" />
-              </label>
-              <button id="saveModelSettings" class="ghost">保存我的模型设置</button>
-              <label>
-                任务说明
-                <textarea id="modelPrompt" rows="5" placeholder="例如：请根据当前阶段证据，生成下一轮访谈问题和需求筛选建议。"></textarea>
-              </label>
-              <button id="generateWithModel">生成建议</button>
-              <div id="modelResult" class="model-result">请先填写并保存个人 API Key，再生成针对当前项目的服务设计建议。</div>
-            </div>
-          </section>
-        </aside>
       </main>
     </div>
-    <script type="module" src="./src/app.js?v=20260723-rolefix"></script>
+    <script type="module" src="./src/app.js?v=20260822-workspace"></script>
   </body>
 </html>
