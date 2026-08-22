@@ -7,7 +7,7 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260823-method-v10" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260823-method-v11" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
@@ -266,6 +266,7 @@
                 <button id="downloadAhpTemplate" class="ghost">下载 AHP 模板</button>
                 <input id="ahpMatrixFile" type="file" accept=".csv,text/csv" />
                 <button id="analyzeAhpMatrix">分析 AHP 矩阵</button>
+                <button id="analyzeAhpWithAi" class="ghost">AI 解释 AHP 结果</button>
               </div>
               <div id="ahpMatrixResult" class="model-result">未上传矩阵时，系统会根据当前需求的重要度/满意度生成课堂演示权重；上传后以真实矩阵为准。</div>
             </section>
@@ -299,6 +300,7 @@
                 <button id="downloadTopsisTemplate" class="ghost">下载 TOPSIS 模板</button>
                 <input id="topsisMatrixFile" type="file" accept=".csv,text/csv" />
                 <button id="analyzeTopsisMatrix">分析 TOPSIS 矩阵</button>
+                <button id="analyzeTopsisWithAi" class="ghost">AI 解释 TOPSIS 结果</button>
               </div>
               <div id="topsisMatrixResult" class="model-result">未上传矩阵时，使用方案卡片中的创新性、可行性、服务质量和风险评分进行排序。</div>
             </section>
@@ -330,6 +332,7 @@
                 </div>
                 <label>自定义 Base URL（可选）<input id="modelBaseUrl" type="url" placeholder="通常可留空，使用默认接口地址" /></label>
                 <button id="saveModelSettings" class="ghost">保存我的模型设置</button>
+                <button id="testModelConnection" class="ghost">测试模型连接</button>
                 <label>任务说明<textarea id="modelPrompt" rows="5" placeholder="例如：请根据当前阶段证据，生成下一轮访谈问题和需求筛选建议。"></textarea></label>
                 <button id="generateWithModel">生成建议</button>
                 <div id="modelResult" class="model-result">请先填写并保存个人 API Key，再生成针对当前项目的服务设计建议。</div>
@@ -420,6 +423,6 @@
         <div id="vizModalBody" class="viz-modal-body"></div>
       </div>
     </section>
-    <script type="module" src="./src/app.js?v=20260823-method-v10"></script>
+    <script type="module" src="./src/app.js?v=20260823-method-v11"></script>
   </body>
 </html>
