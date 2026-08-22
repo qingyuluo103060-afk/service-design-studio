@@ -119,10 +119,22 @@ assert.ok(keywordBubbles[0].size > keywordBubbles[1].size && keywordBubbles[1].s
 assert.ok(keywordBubbles.every((item) => item.x >= 8 && item.x <= 92 && item.y >= 12 && item.y <= 88));
 assert.equal(keywordBubbles[1].tone, 'need');
 
+const demoBubbles = mapKeywordsToBubbles([
+  { word: '入口', count: 1 },
+  { word: '等待', count: 1 },
+  { word: '导诊', count: 1 },
+  { word: '家属', count: 1 },
+]);
+assert.deepEqual(demoBubbles.map((item) => item.rawCount), [1, 1, 1, 1]);
+assert.deepEqual(demoBubbles.map((item) => item.count), [10, 8, 6, 5]);
+assert.ok(demoBubbles[0].size > demoBubbles[3].size, 'demo-only keywords should still show visual priority');
+assert.ok(demoBubbles[3].size < 100, 'low-weight demo bubbles should stay visually modest');
+
 const stakeholderVisuals = getStakeholderVisuals();
 assert.equal(stakeholderVisuals.length, 5);
 assert.deepEqual(stakeholderVisuals.map((item) => item.type), ['core-user', 'companion', 'frontline', 'manager', 'platform']);
 assert.ok(stakeholderVisuals.every((item) => item.symbol && item.label && item.role));
+assert.ok(stakeholderVisuals.every((item) => Array.isArray(item.items) && item.items.length >= 3));
 
 const validState = validateClassroomState({
   studentText: '20260101 陈一 产品设计1班',
