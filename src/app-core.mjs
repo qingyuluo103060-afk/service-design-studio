@@ -386,15 +386,21 @@ export function extractKeywords(text) {
 
 export function mapKeywordsToBubbles(keywords) {
   const items = Array.isArray(keywords) ? keywords.slice(0, 16) : [];
-  const maxCount = Math.max(...items.map((item) => Number(item.count) || 0), 1);
-  const minSize = 48;
-  const maxSize = 118;
+  const rawCounts = items.map((item) => Number(item.count) || 1);
+  const hasRange = new Set(rawCounts).size > 1;
+  const demoWeights = [10, 8, 6, 5, 4, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1];
+  const displayCounts = hasRange ? rawCounts : items.map((_, index) => demoWeights[index] || 1);
+  const maxCount = Math.max(...displayCounts, 1);
+  const minSize = 34;
+  const maxSize = 116;
   return items.map((item, index) => {
-    const count = Number(item.count) || 1;
+    const rawCount = Number(item.count) || 1;
+    const count = displayCounts[index] || rawCount;
     const ratio = count / maxCount;
     return {
       word: String(item.word || ''),
       count,
+      rawCount,
       size: Math.round(minSize + (maxSize - minSize) * Math.sqrt(ratio)),
       tone: keywordTone(item.word),
       x: 8 + ((index * 23) % 84),
@@ -405,11 +411,11 @@ export function mapKeywordsToBubbles(keywords) {
 
 export function getStakeholderVisuals() {
   return [
-    { type: 'core-user', symbol: '人', label: '目标用户', role: '核心体验者', tone: 'user' },
-    { type: 'companion', symbol: '伴', label: '家属/同伴', role: '陪伴与协助者', tone: 'companion' },
-    { type: 'frontline', symbol: '服', label: '一线服务人员', role: '触点执行者', tone: 'frontline' },
-    { type: 'manager', symbol: '管', label: '管理者', role: '规则与资源配置者', tone: 'manager' },
-    { type: 'platform', symbol: '端', label: '平台/设备', role: '技术与物理载体', tone: 'platform' },
+    { type: 'core-user', symbol: '人', label: '目标用户', role: '核心体验者', tone: 'user', items: ['主要用户', '潜在用户', '边缘用户'] },
+    { type: 'companion', symbol: '伴', label: '家属/同伴', role: '陪伴与协助者', tone: 'companion', items: ['陪伴者', '同伴支持', '意见影响者'] },
+    { type: 'frontline', symbol: '服', label: '一线服务人员', role: '触点执行者', tone: 'frontline', items: ['导引员', '客服/接待', '现场执行者'] },
+    { type: 'manager', symbol: '管', label: '管理者', role: '规则与资源配置者', tone: 'manager', items: ['课程教师', '服务主管', '资源协调者'] },
+    { type: 'platform', symbol: '端', label: '平台/设备', role: '技术与物理载体', tone: 'platform', items: ['小程序/系统', '空间/设备', '数据平台'] },
   ];
 }
 
