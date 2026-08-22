@@ -1,4 +1,4 @@
-const CACHE_NAME = 'service-design-studio-v10-rolefix';
+const CACHE_NAME = 'service-design-studio-v11-workspace';
 const ASSETS = [
   './',
   './index.html',
