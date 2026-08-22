@@ -13,6 +13,39 @@ const env = {
 const capturedRequests = [];
 const fakeFetch = async (url, options = {}) => {
   capturedRequests.push({ url, options });
+  if (String(url).includes('api.openalex.org/works')) {
+    return new Response(
+      JSON.stringify({
+        results: [{
+          id: 'https://openalex.org/W1',
+          title: 'Service design for hospital navigation',
+          publication_year: 2024,
+          cited_by_count: 12,
+          doi: 'https://doi.org/10.1000/example',
+          primary_location: { source: { display_name: 'Design Journal' } },
+          authorships: [{ author: { display_name: 'A. Researcher' } }],
+        }],
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
+  }
+  if (String(url).includes('api.crossref.org/works')) {
+    return new Response(
+      JSON.stringify({
+        message: {
+          items: [{
+            title: ['Kano AHP TRIZ service innovation'],
+            published: { 'date-parts': [[2023]] },
+            DOI: '10.1000/crossref',
+            'container-title': ['Service Systems'],
+            author: [{ given: 'B.', family: 'Scholar' }],
+            'is-referenced-by-count': 5,
+          }],
+        },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
+  }
   return new Response(
     JSON.stringify({
       choices: [{ message: { content: '请先补充用户访谈样本量与关键洞察。' } }],
@@ -91,6 +124,19 @@ try {
   assert.equal(capturedRequests[0].url, 'https://api.deepseek.com/chat/completions');
   assert.equal(capturedRequests[0].options.headers.authorization, 'Bearer student-key');
   assert.equal(JSON.parse(capturedRequests[0].options.body).model, 'deepseek-student');
+
+  const literature = await fetchJson(`${baseUrl}/api/literature/search`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-access-code': 'class-2026',
+    },
+    body: JSON.stringify({ query: 'hospital navigation service design', limit: 4 }),
+  });
+  assert.equal(literature.ok, true);
+  assert.equal(literature.items.length, 2);
+  assert.ok(literature.items.some((item) => item.source === 'OpenAlex'));
+  assert.ok(literature.items.some((item) => item.source === 'Crossref'));
 
   console.log('public api tests passed');
 } finally {
