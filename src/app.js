@@ -122,6 +122,7 @@ const els = {
   ahpMatrixFile: document.querySelector('#ahpMatrixFile'),
   downloadAhpTemplate: document.querySelector('#downloadAhpTemplate'),
   analyzeAhpMatrix: document.querySelector('#analyzeAhpMatrix'),
+  analyzeAhpWithAi: document.querySelector('#analyzeAhpWithAi'),
   ahpMatrixResult: document.querySelector('#ahpMatrixResult'),
   journeyTable: document.querySelector('#journeyTable'),
   journeyMap: document.querySelector('#journeyMap'),
@@ -169,6 +170,7 @@ const els = {
   modelName: document.querySelector('#modelName'),
   modelBaseUrl: document.querySelector('#modelBaseUrl'),
   saveModelSettings: document.querySelector('#saveModelSettings'),
+  testModelConnection: document.querySelector('#testModelConnection'),
   modelPrompt: document.querySelector('#modelPrompt'),
   generateWithModel: document.querySelector('#generateWithModel'),
   modelResult: document.querySelector('#modelResult'),
@@ -216,6 +218,7 @@ const els = {
   topsisMatrixFile: document.querySelector('#topsisMatrixFile'),
   downloadTopsisTemplate: document.querySelector('#downloadTopsisTemplate'),
   analyzeTopsisMatrix: document.querySelector('#analyzeTopsisMatrix'),
+  analyzeTopsisWithAi: document.querySelector('#analyzeTopsisWithAi'),
   topsisMatrixResult: document.querySelector('#topsisMatrixResult'),
 };
 
@@ -400,6 +403,7 @@ function bindEvents() {
   els.unlockApp.addEventListener('click', unlockWithAccessCode);
   els.logoutAccount.addEventListener('click', logoutAccount);
   els.saveModelSettings.addEventListener('click', saveModelSettings);
+  els.testModelConnection?.addEventListener('click', testModelConnection);
   els.modelProvider.addEventListener('change', () => {
     modelSettings.provider = els.modelProvider.value;
     applyModelSettingsToForm();
@@ -424,6 +428,7 @@ function bindEvents() {
   els.downloadAhpTemplate?.addEventListener('click', downloadAhpTemplate);
   els.ahpMatrixFile?.addEventListener('change', () => readTextFileInto(els.ahpMatrixFile, els.ahpMatrixText));
   els.analyzeAhpMatrix?.addEventListener('click', analyzeAhpMatrix);
+  els.analyzeAhpWithAi?.addEventListener('click', () => explainMethodResultWithAi('ahp'));
   els.downloadJourneyTemplate?.addEventListener('click', downloadJourneyTemplate);
   els.journeyFile?.addEventListener('change', importJourneyFile);
   els.analyzeJourney?.addEventListener('click', analyzeJourney);
@@ -432,6 +437,7 @@ function bindEvents() {
   els.analyzeTriz?.addEventListener('click', analyzeTriz);
   els.downloadTopsisTemplate?.addEventListener('click', downloadTopsisTemplate);
   els.analyzeTopsisMatrix?.addEventListener('click', analyzeTopsisMatrix);
+  els.analyzeTopsisWithAi?.addEventListener('click', () => explainMethodResultWithAi('topsis'));
   els.topsisMatrixFile?.addEventListener('change', analyzeTopsisMatrix);
   els.analyzeBlueprint?.addEventListener('click', () => openSmartAnalysis('blueprintTemplate'));
   els.generateProjectReport?.addEventListener('click', generateProjectReport);
@@ -713,6 +719,40 @@ function saveModelSettings() {
     : '模型设置已保存，但生成建议前仍需填写 API Key。';
 }
 
+async function testModelConnection() {
+  const provider = els.modelProvider.value;
+  const providerSettings = collectModelSettingsFromForm();
+  if (!provider || !providerSettings.apiKey) {
+    els.modelResult.textContent = '请先选择模型并填写个人 API Key，再测试连接。';
+    return;
+  }
+  saveModelSettings();
+  els.testModelConnection.disabled = true;
+  els.modelStatus.textContent = '测试中';
+  els.modelResult.textContent = '正在测试模型连接，会发送一条很短的课堂测试消息...';
+  try {
+    const response = await apiFetch('./api/llm/check', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        provider,
+        apiKey: providerSettings.apiKey,
+        model: providerSettings.model,
+        baseUrl: providerSettings.baseUrl,
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || '连接测试失败');
+    els.modelStatus.textContent = '连接可用';
+    els.modelResult.textContent = `连接成功：${result.provider} / ${result.model}\n模型返回：${result.content || 'OK'}`;
+  } catch (error) {
+    els.modelStatus.textContent = '连接失败';
+    els.modelResult.textContent = `模型连接失败：${error.message}\n请检查 API Key、模型名、Base URL 和账号余额。`;
+  } finally {
+    els.testModelConnection.disabled = false;
+  }
+}
+
 async function generateModelAdvice() {
   const provider = els.modelProvider.value;
   const prompt = els.modelPrompt.value.trim();
@@ -887,6 +927,7 @@ function renderCurrentMethodPanel() {
         <p class="eyebrow">Current Step</p>
         <h2>${escapeHtml(module.title)}</h2>
         <p>${escapeHtml(activeTask?.title || module.description)}</p>
+        <button type="button" class="ghost stage-ai-button" data-stage-ai="${escapeHtml(activeModuleId)}">本阶段 AI 助教</button>
       </div>
       <div class="current-method-check">
         <b>本步先准备</b>
@@ -1654,10 +1695,26 @@ async function analyzeJourney() {
   saveState();
   renderJourneyWorkspace(project);
   try {
-    const aiText = await requestModelText(`请根据以下用户旅程图数据，分析阶段断点、情绪变化、关键痛点和可进入服务蓝图的机会点。必须按“阶段-触点-痛点-机会-证据”输出。\n${JSON.stringify(project.journey)}`);
-    els.journeyTable.insertAdjacentHTML('beforeend', `<div class="model-result"><b>智能分析</b>\n${escapeHtml(aiText)}</div>`);
-  } catch {
-    // Local journey rows remain visible.
+    const json = await requestModelJson(
+      `请根据以下项目和旅程图数据，优化用户旅程图。必须保持服务设计课程逻辑：先调研证据，再阶段触点，再痛点机会，不要直接跳到最终方案。\n项目：${project.title}\n场景：${project.scenario}\n旅程数据：${JSON.stringify(project.journey)}`,
+      '{"journey":[{"stage":"阶段","touchpoint":"触点","action":"用户行为","emotion":1-5,"pain":"痛点","opportunity":"机会点","evidence":"证据来源"}],"analysis":"不超过300字的分析"}',
+    );
+    if (Array.isArray(json.journey) && json.journey.length) {
+      project.journey = json.journey.map((row) => ({
+        stage: String(row.stage || ''),
+        touchpoint: String(row.touchpoint || ''),
+        action: String(row.action || ''),
+        emotion: Number(row.emotion) || 3,
+        pain: String(row.pain || ''),
+        opportunity: String(row.opportunity || ''),
+        evidence: String(row.evidence || ''),
+      }));
+      saveState();
+      renderJourneyWorkspace(project);
+    }
+    els.journeyTable.insertAdjacentHTML('beforeend', `<div class="model-result"><b>智能分析</b>\n${escapeHtml(json.analysis || '已根据模型返回结果更新旅程图。')}</div>`);
+  } catch (error) {
+    els.journeyTable.insertAdjacentHTML('beforeend', `<div class="model-result"><b>本地结果已生成</b>\n模型结构化输出未完成：${escapeHtml(error.message)}。请检查 API Key，或继续使用当前旅程图。 </div>`);
   }
 }
 
@@ -1726,10 +1783,32 @@ async function analyzeTriz() {
   renderConcepts();
   renderLight();
   try {
-    const aiText = await requestModelText(`请严格按照 TRIZ 服务创新过程，复核以下矛盾表，补充可执行方案卡。字段包括：关键需求、改善目标、恶化风险、发明原理、服务触点转译、证据链。\n${JSON.stringify(project.triz)}`);
-    els.trizResult.innerHTML = `<b>智能 TRIZ 分析</b>\n${escapeHtml(aiText)}`;
-  } catch {
-    els.trizResult.textContent = '已根据关键需求生成 TRIZ 矛盾表和方案卡。可配置个人 API Key 后获得更细致的原理匹配说明。';
+    const json = await requestModelJson(
+      `请严格按照 TRIZ 服务创新过程，复核以下矛盾表，补充可执行方案卡。不要编造调研数据，必须保留证据链。\n项目：${project.title}\n关键需求：${JSON.stringify(project.needs)}\nTRIZ 初表：${JSON.stringify(project.triz)}`,
+      '{"triz":[{"need":"关键需求","improve":"改善目标","worsen":"恶化风险","principle":"TRIZ发明原理","concept":"服务触点方案","evidence":"证据链"}],"analysis":"不超过300字的TRIZ解释"}',
+    );
+    if (Array.isArray(json.triz) && json.triz.length) {
+      project.triz = json.triz.map((row) => ({
+        need: String(row.need || ''),
+        improve: String(row.improve || ''),
+        worsen: String(row.worsen || ''),
+        principle: String(row.principle || ''),
+        concept: String(row.concept || ''),
+        evidence: String(row.evidence || ''),
+      }));
+      project.triz.forEach((row) => {
+        if (row.concept && !project.concepts.some((concept) => concept.title === row.concept)) {
+          project.concepts.push({ title: row.concept, novelty: 4, feasibility: 3, serviceQuality: 4, risk: 2 });
+        }
+      });
+      saveState();
+      renderTrizWorkspace(project);
+      renderConcepts();
+      renderLight();
+    }
+    els.trizResult.innerHTML = `<b>智能 TRIZ 分析</b>\n${escapeHtml(json.analysis || '已根据模型返回结果更新 TRIZ 工作表。')}`;
+  } catch (error) {
+    els.trizResult.textContent = `已根据关键需求生成 TRIZ 矛盾表和方案卡。模型结构化输出未完成：${error.message}`;
   }
 }
 
@@ -1789,6 +1868,34 @@ function renderTopsisMatrixResult(project) {
     </div>
     <p class="muted">正理想解：${Object.entries(analysis.idealBest || {}).map(([key, value]) => `${key}=${Number(value).toFixed(3)}`).join('；')}；负理想解：${Object.entries(analysis.idealWorst || {}).map(([key, value]) => `${key}=${Number(value).toFixed(3)}`).join('；')}</p>
   `;
+}
+
+async function explainMethodResultWithAi(method) {
+  const project = activeProject();
+  const isAhp = method === 'ahp';
+  const target = isAhp ? els.ahpMatrixResult : els.topsisMatrixResult;
+  const payload = isAhp
+    ? project.ahpAnalysis || (() => {
+      const parsed = parseAhpMatrixCsv(buildAhpTemplateText(project));
+      return { labels: parsed.labels, matrix: parsed.matrix, ...calculateAhpConsistency(parsed.matrix) };
+    })()
+    : project.topsisAnalysis || calculateTopsisAnalysis(project.concepts, topsisCriteria());
+  if (!target) return;
+  target.insertAdjacentHTML('beforeend', '<div class="model-result"><b>AI 解释</b>\n正在结合课程方法解释计算结果...</div>');
+  const resultBox = target.querySelector('.model-result:last-child');
+  try {
+    const aiText = await requestModelText(
+      isAhp
+        ? `请解释以下 AHP 判断矩阵结果，必须说明权重、λmax、CI、CR、一致性是否通过、如果 CR 不通过如何修正，以及如何进入 Kano/AHP 需求优先级报告。\n${JSON.stringify(payload)}`
+        : `请解释以下 TOPSIS 方案排序结果，必须说明评价指标、正负理想解、D+、D-、贴近度 C、优先方案依据，以及如何转入服务蓝图和测试评估。\n${JSON.stringify(payload)}`,
+    );
+    resultBox.innerHTML = `<b>AI 解释</b>\n${escapeHtml(aiText)}`;
+  } catch (error) {
+    const local = isAhp
+      ? `AHP 本地解释：CR=${payload.cr}，${payload.consistent ? '一致性通过，可作为权重进入需求优先级或 TOPSIS。' : '一致性未通过，建议回到成对比较矩阵重新调整极端判断。'}`
+      : `TOPSIS 本地解释：当前优先方案为 ${payload.ranked?.[0]?.title || '待补充'}，贴近度越高越接近正理想解，应结合调研证据和服务蓝图再判断。`;
+    resultBox.innerHTML = `<b>AI 解释</b>\n${escapeHtml(`${local}\n模型未连接：${error.message}`)}`;
+  }
 }
 
 function csvHeaderIndex(headers = []) {
@@ -2200,6 +2307,31 @@ async function openSmartAnalysis(vizId) {
   }
 }
 
+async function runStageAiAssistant(moduleId = activeModuleId) {
+  const module = COURSE_MODULES.find((item) => item.id === moduleId) || COURSE_MODULES[0];
+  const templates = METHOD_PROCESS_TEMPLATES.filter((item) => item.moduleId === moduleId);
+  const plan = buildMethodTaskPlan(activeProject());
+  const activeTask = plan.find((task) => task.moduleId === moduleId) || plan.find((task) => !task.completed) || plan[0];
+  const localPrompt = [
+    `当前模块：${module.title}`,
+    `当前任务：${activeTask?.title || module.description}`,
+    `必须遵循流程：${METHOD_TASK_CHAIN.map((task) => task.phase).join(' → ')}`,
+    `本模块前置材料：${templates.flatMap((item) => item.inputs).join('、') || '当前项目数据'}`,
+    `本模块应产出：${templates.flatMap((item) => item.rows.map((row) => row[0])).join('、') || activeTask?.outputs?.join('、') || '阶段成果'}`,
+    '请输出：1. 学生现在应该做什么；2. 需要上传/填写哪些数据；3. 推荐使用哪些方法；4. 结果应该形成哪些表格/图形；5. 容易犯错的地方。',
+  ].join('\n');
+  els.vizModalTitle.textContent = `${module.title} · 本阶段 AI 助教`;
+  els.vizModalBody.dataset.vizId = `stage-${moduleId}`;
+  els.vizModalBody.innerHTML = `<div class="model-result">${escapeHtml(`${localPrompt}\n\n未连接模型时，可先按以上清单推进。`)}</div>`;
+  els.vizModal.hidden = false;
+  try {
+    const aiText = await requestModelText(localPrompt);
+    els.vizModalBody.innerHTML = `<div class="model-result">${escapeHtml(aiText)}</div>`;
+  } catch (error) {
+    els.vizModalBody.innerHTML = `<div class="model-result">${escapeHtml(`${localPrompt}\n\n模型未连接：${error.message}\n请到“AI 模型设置”测试个人 API Key。`)}</div>`;
+  }
+}
+
 async function requestModelText(prompt) {
   const provider = modelSettings.provider;
   const providerSettings = modelSettings.providers?.[provider] || {};
@@ -2220,6 +2352,18 @@ async function requestModelText(prompt) {
   const data = await response.json();
   if (data.ok === false) throw new Error(data.error || '模型未返回有效结果');
   return data.content || data.text || data.message || '';
+}
+
+async function requestModelJson(prompt, shapeHint) {
+  const content = await requestModelText(`${prompt}\n\n请只返回严格 JSON，不要使用 Markdown。JSON 结构要求：${shapeHint}`);
+  return parseModelJson(content);
+}
+
+function parseModelJson(content) {
+  const text = String(content || '').trim();
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
+  const raw = fenced || text;
+  return JSON.parse(raw);
 }
 
 function buildLocalAnalysis(vizId, project, rawText = '') {
@@ -2431,6 +2575,12 @@ function handleVisualizationClick(event) {
   const smartAnalysis = event.target.closest('[data-viz-ai]');
   if (smartAnalysis) {
     openSmartAnalysis(smartAnalysis.dataset.vizAi);
+    return;
+  }
+
+  const stageAi = event.target.closest('[data-stage-ai]');
+  if (stageAi) {
+    runStageAiAssistant(stageAi.dataset.stageAi);
     return;
   }
 
