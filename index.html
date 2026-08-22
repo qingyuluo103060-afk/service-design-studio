@@ -7,7 +7,7 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260823-method-v9" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260823-method-v10" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
@@ -200,7 +200,7 @@
                 <label>访谈文字稿<textarea id="interviewTranscript" rows="8" placeholder="粘贴逐字稿、访谈纪要或开放题回答。建议保留受访者原话。"></textarea></label>
                 <label>分析方法<select id="interviewMethod"><option value="thematic">主题分析：熟悉材料-编码-主题-复核-命名-报告</option><option value="grounded">扎根理论：开放编码-主轴编码-选择编码-持续比较-饱和检查</option></select><textarea id="interviewCodingPrompt" rows="5" placeholder="可补充研究问题，例如：重点分析老年患者导诊过程中的情绪压力、信息断点与协同需求。"></textarea></label>
               </div>
-              <div class="data-actions"><button id="runInterviewCoding">按方法步骤分析</button></div>
+              <div class="data-actions"><input id="interviewTranscriptFile" type="file" accept=".txt,.csv,.json,text/plain,text/csv,application/json" /><button id="runInterviewCoding">按方法步骤分析</button></div>
               <div id="interviewCodingResult" class="coding-result"></div>
             </section>
             <section class="panel task-panel">
@@ -220,6 +220,23 @@
             </div>
           </section>
 
+          <section id="module-journey" class="workspace-module">
+            <section class="panel journey-panel">
+              <div class="panel-title">
+                <div><p class="eyebrow">Journey Map</p><h2>用户旅程图：阶段、触点、情绪与机会</h2></div>
+                <span class="status-chip">调研证据 → 旅程阶段 → 蓝图输入</span>
+              </div>
+              <p class="muted">把访谈、观察和问卷材料整理为标准用户旅程。建议至少包含 5 个阶段，并记录触点、用户行为、情绪值、痛点、机会点和证据来源。</p>
+              <div class="data-actions">
+                <button id="downloadJourneyTemplate" class="ghost">下载旅程图 CSV 模板</button>
+                <input id="journeyFile" type="file" accept=".csv,text/csv" />
+                <button id="analyzeJourney" type="button">生成/更新旅程图</button>
+              </div>
+              <div id="journeyTable" class="method-table-wrap"></div>
+              <div id="journeyMap" class="journey-map"></div>
+            </section>
+          </section>
+
           <section id="module-needs" class="workspace-module">
             <div class="split-grid">
               <section class="panel"><div class="panel-title"><div><p class="eyebrow">Needs</p><h2>需求筛选</h2></div><button id="addNeed" class="ghost">添加需求</button></div><div id="needList" class="compact-list"></div></section>
@@ -235,6 +252,23 @@
               </div>
               <div id="kanoSurveyResult" class="model-result">问卷会根据前面整理出的需求自动生成。上传 CSV 后可汇总正反向问题并更新分类建议。</div>
             </section>
+            <section class="panel ahp-panel">
+              <div class="panel-title">
+                <div><p class="eyebrow">AHP Matrix</p><h2>AHP 判断矩阵上传与一致性检验</h2></div>
+                <span class="status-chip">1-9 标度 · CR ≤ 0.10</span>
+              </div>
+              <p class="muted">上传或粘贴成对比较矩阵。第一行/列为需求名称，矩阵数值支持 1、3、5、7、9 或小数。系统会输出权重、λmax、CI、CR 和是否通过一致性检验。</p>
+              <div class="form-grid">
+                <label>AHP 判断矩阵<textarea id="ahpMatrixText" rows="6" placeholder="需求,候诊提醒,导诊清晰,陪诊协同&#10;候诊提醒,1,3,5&#10;导诊清晰,0.333,1,2&#10;陪诊协同,0.2,0.5,1"></textarea></label>
+                <label>AHP 说明<textarea id="ahpNote" rows="6" placeholder="记录评分人、评分依据、是否重新调整矩阵，以及 CR 不通过时的修正说明。"></textarea></label>
+              </div>
+              <div class="data-actions">
+                <button id="downloadAhpTemplate" class="ghost">下载 AHP 模板</button>
+                <input id="ahpMatrixFile" type="file" accept=".csv,text/csv" />
+                <button id="analyzeAhpMatrix">分析 AHP 矩阵</button>
+              </div>
+              <div id="ahpMatrixResult" class="model-result">未上传矩阵时，系统会根据当前需求的重要度/满意度生成课堂演示权重；上传后以真实矩阵为准。</div>
+            </section>
           </section>
 
           <section id="module-concepts" class="workspace-module">
@@ -242,6 +276,32 @@
               <section class="panel"><div class="panel-title"><div><p class="eyebrow">Concepts</p><h2>方案生成与筛选</h2></div><button id="addConcept" class="ghost">添加方案</button></div><div id="conceptList" class="compact-list"></div></section>
               <section class="panel"><div class="panel-title"><div><p class="eyebrow">TOPSIS</p><h2>方案排序柱状图</h2></div></div><div id="rankChart"></div></section>
             </div>
+            <section class="panel triz-panel">
+              <div class="panel-title">
+                <div><p class="eyebrow">TRIZ Worksheet</p><h2>TRIZ 矛盾分析与发明原理转化</h2></div>
+                <span class="status-chip">关键需求 → 服务矛盾 → 方案卡</span>
+              </div>
+              <div id="trizWorksheet" class="method-table-wrap"></div>
+              <div class="data-actions">
+                <button id="downloadTrizTemplate" class="ghost">下载 TRIZ 模板</button>
+                <input id="trizFile" type="file" accept=".csv,text/csv" />
+                <button id="analyzeTriz">智能分析 TRIZ</button>
+              </div>
+              <div id="trizResult" class="model-result">先从 Kano/AHP 得到关键需求，再识别“想改善什么”和“可能恶化什么”，最后把 TRIZ 原理转译成服务触点方案。</div>
+            </section>
+            <section class="panel topsis-panel">
+              <div class="panel-title">
+                <div><p class="eyebrow">TOPSIS Matrix</p><h2>AHP-TOPSIS 决策矩阵上传与过程表</h2></div>
+                <span class="status-chip">归一化 · 加权 · 贴近度</span>
+              </div>
+              <p class="muted">上传备选方案评价矩阵。表头格式建议：方案,创新性,可行性,服务质量,风险；风险为成本型指标，其他默认为效益型指标。权重可来自 AHP。</p>
+              <div class="data-actions">
+                <button id="downloadTopsisTemplate" class="ghost">下载 TOPSIS 模板</button>
+                <input id="topsisMatrixFile" type="file" accept=".csv,text/csv" />
+                <button id="analyzeTopsisMatrix">分析 TOPSIS 矩阵</button>
+              </div>
+              <div id="topsisMatrixResult" class="model-result">未上传矩阵时，使用方案卡片中的创新性、可行性、服务质量和风险评分进行排序。</div>
+            </section>
           </section>
 
           <section id="module-blueprint" class="workspace-module">
@@ -360,6 +420,6 @@
         <div id="vizModalBody" class="viz-modal-body"></div>
       </div>
     </section>
-    <script type="module" src="./src/app.js?v=20260823-method-v9"></script>
+    <script type="module" src="./src/app.js?v=20260823-method-v10"></script>
   </body>
 </html>
