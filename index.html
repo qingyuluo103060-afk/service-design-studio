@@ -7,7 +7,7 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260822-classroom-v4" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260822-method-v6" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
@@ -175,6 +175,18 @@
               <div id="researchAnalysisResult" class="model-result">上传或粘贴数据后，可调用个人大模型接口进行分析；未配置 API Key 时会先生成本地启发式分析。</div>
               <div id="researchQuadrant" class="quadrant-chart" aria-label="调研分析四象限图"></div>
             </section>
+            <section class="panel interview-panel">
+              <div class="panel-title">
+                <div><p class="eyebrow">Interview Coding</p><h2>访谈文字稿扎根理论 / 主题分析</h2></div>
+                <span class="status-chip">严格步骤化</span>
+              </div>
+              <div class="form-grid">
+                <label>访谈文字稿<textarea id="interviewTranscript" rows="8" placeholder="粘贴逐字稿、访谈纪要或开放题回答。建议保留受访者原话。"></textarea></label>
+                <label>分析方法<select id="interviewMethod"><option value="thematic">主题分析：熟悉材料-编码-主题-复核-命名-报告</option><option value="grounded">扎根理论：开放编码-主轴编码-选择编码-持续比较-饱和检查</option></select><textarea id="interviewCodingPrompt" rows="5" placeholder="可补充研究问题，例如：重点分析老年患者导诊过程中的情绪压力、信息断点与协同需求。"></textarea></label>
+              </div>
+              <div class="data-actions"><button id="runInterviewCoding">按方法步骤分析</button></div>
+              <div id="interviewCodingResult" class="coding-result"></div>
+            </section>
             <section class="panel task-panel">
               <div class="panel-title"><div><p class="eyebrow">Research Evidence</p><h2 id="stageTitle">阶段任务</h2><p id="stageFocus" class="muted"></p></div><button id="addEvidence">添加证据</button></div>
               <div id="evidenceList" class="evidence-grid"></div>
@@ -182,12 +194,13 @@
           </section>
 
           <section id="module-persona" class="workspace-module">
-            <div class="split-grid">
+            <div class="persona-flow">
               <section class="panel toolkit-panel">
                 <div class="panel-title"><div><p class="eyebrow">Method Toolkit</p><h2>用户画像与利益相关者方法</h2></div><span id="stageOutcome" class="status-chip">方法链 × AI链</span></div>
                 <div id="methodToolkit" class="toolkit-grid"></div>
               </section>
-              <section class="panel"><div class="panel-title"><div><p class="eyebrow">Stakeholders</p><h2>利益相关者关系图</h2></div></div><div id="stakeholderMap" class="stakeholder-map"></div></section>
+              <section class="panel persona-panel"><div class="panel-title"><div><p class="eyebrow">Persona Cards</p><h2>用户画像可视化</h2></div><span class="status-chip">画像卡片</span></div><div id="personaBoard" class="persona-board"></div></section>
+              <section class="panel stakeholder-panel"><div class="panel-title"><div><p class="eyebrow">Stakeholders</p><h2>利益相关者生态关系图</h2></div><span class="status-chip">中心-圈层-关系</span></div><div id="stakeholderMap" class="stakeholder-map stakeholder-orbit"></div></section>
             </div>
           </section>
 
@@ -196,6 +209,16 @@
               <section class="panel"><div class="panel-title"><div><p class="eyebrow">Needs</p><h2>需求筛选</h2></div><button id="addNeed" class="ghost">添加需求</button></div><div id="needList" class="compact-list"></div></section>
               <section class="panel"><div class="panel-title"><div><p class="eyebrow">Kano / AHP</p><h2>需求分类图</h2></div></div><div id="kanoChart" class="kano-chart"></div></section>
             </div>
+            <section class="panel kano-survey-panel">
+              <div class="panel-title"><div><p class="eyebrow">Kano Survey</p><h2>Kano 问卷生成、下载与数据分析</h2></div><span class="status-chip">需求分类 → 问卷 → 可视化</span></div>
+              <div id="kanoQuestionnaire" class="kano-questionnaire"></div>
+              <div class="data-actions">
+                <button id="downloadKanoSurvey">下载 Kano 问卷 CSV</button>
+                <input id="kanoSurveyFile" type="file" accept=".csv,text/csv" />
+                <button id="analyzeKanoSurvey" class="ghost">上传问卷数据并分析</button>
+              </div>
+              <div id="kanoSurveyResult" class="model-result">问卷会根据前面整理出的需求自动生成。上传 CSV 后可汇总正反向问题并更新分类建议。</div>
+            </section>
           </section>
 
           <section id="module-concepts" class="workspace-module">
@@ -251,6 +274,11 @@
               <div class="data-actions"><button id="importData" class="ghost">导入数据</button><input id="importFile" type="file" accept="application/json,.json" hidden /><button id="exportData" class="ghost">导出数据</button><button id="resetDemo" class="ghost">重置示例</button></div>
               <div id="groupList" class="group-list"></div>
             </section>
+            <section class="panel role-panel">
+              <div class="panel-title"><div><p class="eyebrow">Team Roles</p><h2>小组成员分工</h2></div><span class="status-chip">自定义 / 随机分配</span></div>
+              <div class="data-actions"><button id="randomAssignRoles">随机分配当前小组角色</button><button id="clearGroupRoles" class="ghost">清空分工</button></div>
+              <div id="roleBoard" class="role-board"></div>
+            </section>
             <section class="panel grading-panel">
               <div class="panel-title"><div><p class="eyebrow">Assessment</p><h2>课程评分、量规与成绩单</h2></div><span class="status-chip">智能评分 + 教师手评</span></div>
               <div class="form-grid">
@@ -263,6 +291,10 @@
                 <button id="exportGradebook" class="ghost">导出成绩单</button>
               </div>
               <div id="gradingTable" class="grading-table"></div>
+            </section>
+            <section class="panel challenge-panel">
+              <div class="panel-title"><div><p class="eyebrow">Challenge Game</p><h2>服务设计闯关进度</h2></div><span class="status-chip">课堂激励</span></div>
+              <div id="challengeBoard" class="challenge-board"></div>
             </section>
           </section>
         </section>
@@ -312,6 +344,6 @@
         <div id="vizModalBody" class="viz-modal-body"></div>
       </div>
     </section>
-    <script type="module" src="./src/app.js?v=20260822-classroom-v4"></script>
+    <script type="module" src="./src/app.js?v=20260822-method-v6"></script>
   </body>
 </html>
