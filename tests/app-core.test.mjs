@@ -19,6 +19,11 @@ import {
   getRiskStatus,
   getStageToolkit,
   calculateTopsisAnalysis,
+  parseAhpMatrixCsv,
+  parseTopsisMatrixCsv,
+  parseCsvTable,
+  buildJourneyRows,
+  buildTrizRows,
   rankByTopsis,
   validateClassroomState,
 } from '../src/app-core.mjs';
@@ -140,6 +145,33 @@ assert.equal(topsisAnalysis.ranked.length, 2);
 assert.ok(topsisAnalysis.ranked[0].score >= 0 && topsisAnalysis.ranked[0].score <= 1);
 assert.ok(Object.hasOwn(topsisAnalysis.idealBest, 'risk'));
 
+const parsedCsv = parseCsvTable('name,value\n"候诊,提醒",5');
+assert.deepEqual(parsedCsv.headers, ['name', 'value']);
+assert.equal(parsedCsv.rows[0][0], '候诊,提醒');
+
+const parsedAhp = parseAhpMatrixCsv('需求,候诊提醒,导诊清晰\n候诊提醒,1,3\n导诊清晰,0.333,1');
+assert.deepEqual(parsedAhp.labels, ['候诊提醒', '导诊清晰']);
+assert.equal(parsedAhp.matrix[0][1], 3);
+
+const parsedTopsis = parseTopsisMatrixCsv('方案,创新性,风险\n方案A,4,2\n方案B,5,4');
+assert.equal(parsedTopsis.items.length, 2);
+assert.equal(parsedTopsis.criteria.find((item) => item.key === '风险').direction, 'cost');
+
+const journeyRows = buildJourneyRows({
+  title: '导诊服务',
+  scenario: '医院导诊',
+  stages: project.stages,
+  needs: [{ title: '入口清晰', importance: 5, satisfaction: 2 }],
+});
+assert.equal(journeyRows.length, 5);
+assert.ok(journeyRows.every((row) => row.stage && row.touchpoint && row.opportunity));
+
+const trizRows = buildTrizRows({
+  needs: [{ title: '入口清晰', importance: 5, satisfaction: 2 }],
+});
+assert.equal(trizRows.length, 1);
+assert.ok(trizRows[0].principle && trizRows[0].concept.includes('入口清晰'));
+
 const advice = buildAssistantAdvice(project, 'prototype');
 assert.ok(advice.some((item) => item.includes('原型') || item.includes('测试')));
 assert.ok(advice.some((item) => item.includes('数据闭环')));
@@ -205,6 +237,8 @@ const validState = validateClassroomState({
         needs: [],
         concepts: [],
         feedback: [],
+        journey: [{ stage: '进入服务', touchpoint: '入口', action: '寻找', emotion: 2, pain: '不清楚', opportunity: '优化入口', evidence: '访谈' }],
+        triz: [{ need: '入口清晰', improve: '理解', worsen: '复杂', principle: '分割', concept: '分层入口', evidence: 'AHP' }],
       },
     },
   ],
@@ -212,6 +246,8 @@ const validState = validateClassroomState({
 assert.equal(validState.ok, true);
 assert.equal(validState.value.groups[0].project.title, '导诊服务');
 assert.equal(validState.value.groups[0].roles.s1, '用户访谈');
+assert.equal(validState.value.groups[0].project.journey[0].stage, '进入服务');
+assert.equal(validState.value.groups[0].project.triz[0].principle, '分割');
 assert.equal(validateClassroomState({ groups: [] }).ok, false);
 
 const methodPlan = buildMethodTaskPlan({
