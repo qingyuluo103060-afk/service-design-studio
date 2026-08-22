@@ -2955,3 +2955,139 @@ h3 {
     grid-template-columns: 1fr;
   }
 }
+
+/* 2026-08 method-chain workbench */
+.method-chain-panel {
+  overflow: hidden;
+}
+
+.method-task-board,
+.task-plan-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.task-plan-preview {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.method-task-card {
+  position: relative;
+  min-height: 220px;
+  padding: 16px;
+  border: 1px solid rgba(12, 96, 112, 0.14);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 88% 12%, rgba(255, 199, 95, 0.22), transparent 26%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(236, 250, 251, 0.9));
+  box-shadow: 0 16px 36px rgba(11, 85, 99, 0.09);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.method-task-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(16, 144, 158, 0.32);
+  box-shadow: 0 20px 42px rgba(11, 85, 99, 0.14);
+}
+
+.method-task-card.completed {
+  border-color: rgba(31, 154, 111, 0.38);
+  background:
+    radial-gradient(circle at 85% 14%, rgba(51, 190, 143, 0.18), transparent 28%),
+    linear-gradient(145deg, rgba(249, 255, 252, 0.98), rgba(232, 249, 243, 0.94));
+}
+
+.method-task-card.ready:not(.completed) {
+  border-color: rgba(238, 174, 71, 0.36);
+}
+
+.method-task-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.method-task-index {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 14px;
+  color: #fff;
+  font-weight: 800;
+  background: linear-gradient(135deg, #0b7486, #15b6b8);
+  box-shadow: 0 10px 22px rgba(11, 116, 134, 0.22);
+}
+
+.method-task-head small {
+  display: block;
+  color: #4d7380;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-bottom: 4px;
+}
+
+.method-task-head h3 {
+  margin: 0;
+  color: #122d35;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.method-task-head button {
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.method-task-card p {
+  color: #486671;
+  line-height: 1.65;
+}
+
+.method-tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.method-tool-row span {
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #086272;
+  background: rgba(16, 178, 188, 0.12);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.method-task-card ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #395964;
+}
+
+.method-task-card li {
+  margin: 4px 0;
+}
+
+.method-note {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  color: #0a6574;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+@media (max-width: 760px) {
+  .method-task-head {
+    grid-template-columns: auto 1fr;
+  }
+
+  .method-task-head button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
