@@ -1,11 +1,30 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startServer } from '../server.mjs';
 
 const tempDir = await mkdtemp(join(tmpdir(), 'service-design-account-auth-'));
+await writeFile(
+  join(tempDir, 'classroom-state.json'),
+  JSON.stringify({
+    studentText: '210117001 陈一 产品设计1班\n210117002 林二 产品设计1班',
+    groups: [
+      {
+        id: 'g1',
+        name: '第1组',
+        members: [
+          { id: '210117001', name: '陈一', className: '产品设计1班' },
+          { id: '210117002', name: '林二', className: '产品设计1班' },
+        ],
+      },
+    ],
+    stages: [],
+    projects: {},
+  }),
+  'utf8',
+);
 const server = await startServer({
   port: 0,
   rootDir: fileURLToPath(new URL('..', import.meta.url)),
@@ -23,6 +42,30 @@ try {
 
   const blockedState = await fetch(`${baseUrl}/api/state`);
   assert.equal(blockedState.status, 401);
+
+  const unlistedStudent = await fetch(`${baseUrl}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      role: 'student',
+      name: '未列名',
+      studentId: '210217001',
+      password: 'pass1234',
+    }),
+  });
+  assert.equal(unlistedStudent.status, 403);
+
+  const wrongRosterName = await fetch(`${baseUrl}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      role: 'student',
+      name: '张三',
+      studentId: '210117001',
+      password: 'pass1234',
+    }),
+  });
+  assert.equal(wrongRosterName.status, 403);
 
   const registerResult = await fetchJson(`${baseUrl}/api/auth/register`, {
     method: 'POST',
