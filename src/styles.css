@@ -3488,7 +3488,7 @@ small,
 
 .current-method-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 1.2fr) repeat(2, minmax(180px, 0.8fr));
+  grid-template-columns: minmax(260px, 1.2fr) minmax(180px, 0.85fr) repeat(2, minmax(170px, 0.75fr));
   gap: 14px;
   align-items: start;
 }
@@ -3755,6 +3755,33 @@ small,
   color: #075869;
 }
 
+.current-method-gate {
+  display: grid;
+  gap: 8px;
+  min-height: 100%;
+  padding: 14px;
+  border: 1px solid rgba(238, 174, 71, 0.28);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 92% 18%, rgba(255, 199, 95, 0.22), transparent 34%),
+    linear-gradient(145deg, rgba(255, 252, 243, 0.96), rgba(236, 250, 251, 0.9));
+}
+
+.current-method-gate b {
+  color: #075869;
+}
+
+.current-method-gate span {
+  color: #142f36;
+  font-weight: 900;
+  line-height: 1.45;
+}
+
+.current-method-gate small {
+  color: #5a747c;
+  line-height: 1.6;
+}
+
 .current-method-check span {
   padding: 6px 8px;
   border-radius: 999px;
@@ -3777,6 +3804,22 @@ small,
 
 .method-process-title h3 {
   margin: 0 0 6px;
+}
+
+.roster-actions {
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 6px;
+}
+
+.roster-actions input[type="file"] {
+  min-width: 220px;
+  max-width: 100%;
+  padding: 9px 10px;
+  border: 1px dashed rgba(12, 96, 112, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #345b66;
 }
 
 .method-mini-list {
