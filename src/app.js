@@ -77,6 +77,10 @@ const els = {
   workspaceRoleHint: document.querySelector('#workspaceRoleHint'),
   currentMethodPanel: document.querySelector('#currentMethodPanel'),
   studentList: document.querySelector('#studentList'),
+  rosterFile: document.querySelector('#rosterFile'),
+  downloadRosterTemplate: document.querySelector('#downloadRosterTemplate'),
+  importRosterFile: document.querySelector('#importRosterFile'),
+  rosterStatus: document.querySelector('#rosterStatus'),
   groupSize: document.querySelector('#groupSize'),
   buildGroups: document.querySelector('#buildGroups'),
   stageNav: document.querySelector('#stageNav'),
@@ -279,6 +283,8 @@ function bindEvents() {
     saveState();
     render();
   });
+  els.downloadRosterTemplate?.addEventListener('click', downloadRosterTemplate);
+  els.importRosterFile?.addEventListener('click', importRosterFile);
 
   els.stageNav.addEventListener('click', (event) => {
     const button = event.target.closest('[data-stage-id]');
@@ -944,6 +950,11 @@ function renderCurrentMethodPanel() {
         <p>${escapeHtml(activeTask?.title || module.description)}</p>
         <button type="button" class="ghost stage-ai-button" data-stage-ai="${escapeHtml(activeModuleId)}">本阶段 AI 助教</button>
       </div>
+      <div class="current-method-gate">
+        <b>工程化门禁</b>
+        <span>${activeTask?.completed ? '本阶段已标记完成' : '先补齐输入材料，再进入下一阶段'}</span>
+        <small>${escapeHtml(activeTask?.status || '按标准流程推进')}</small>
+      </div>
       <div class="current-method-check">
         <b>本步先准备</b>
         ${(templates[0]?.inputs || activeTask?.actions || ['填写当前模块材料']).slice(0, 4).map((item) => `<span>${escapeHtml(item)}</span>`).join('')}
@@ -1041,6 +1052,7 @@ function renderStages() {
 }
 
 function renderGroups() {
+  renderRosterStatus();
   els.groupList.innerHTML = state.groups.map((group) => {
     const active = group.id === activeGroupId ? ' active' : '';
     const progress = calculateStageProgress(group.project);
@@ -1052,6 +1064,16 @@ function renderGroups() {
       <span class="group-progress">${progress.overall}%</span>
     </button>`;
   }).join('');
+}
+
+function renderRosterStatus() {
+  if (!els.rosterStatus) return;
+  const members = state.groups.flatMap((group) => group.members || []);
+  const validMembers = members.filter((member) => isValidRosterStudent(member));
+  const invalidCount = members.length - validMembers.length;
+  els.rosterStatus.textContent = invalidCount
+    ? `当前注册白名单 ${validMembers.length} 人，另有 ${invalidCount} 条名单未符合 21XX17XXX 学号规则。`
+    : `当前注册白名单 ${validMembers.length} 人。学生注册必须同时匹配学号和姓名。`;
 }
 
 function renderHeader() {
@@ -2887,6 +2909,62 @@ function projectToCsv(project) {
 
 function rowsToCsv(rows) {
   return rows.map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`).join(',')).join('\n');
+}
+
+function downloadRosterTemplate() {
+  downloadText(
+    'service-design-student-roster-template.csv',
+    rowsToCsv([
+      ['student_id', 'name', 'class_name'],
+      ['210117001', '张三', '服务设计1班'],
+      ['210117002', '李四', '服务设计1班'],
+    ]),
+    'text/csv;charset=utf-8',
+  );
+}
+
+async function importRosterFile() {
+  const file = els.rosterFile?.files?.[0];
+  if (!file) {
+    if (els.rosterStatus) els.rosterStatus.textContent = '请先选择 CSV 名单文件。';
+    return;
+  }
+  try {
+    const table = parseCsvTable(await file.text());
+    const index = csvHeaderIndex(table.headers);
+    const rows = table.rows.map((row) => ({
+      id: String(row[index('student_id', 'student id', '学号')] || '').trim(),
+      name: String(row[index('name', '姓名')] || '').trim(),
+      className: String(row[index('class_name', 'class', '班级')] || '').trim(),
+    })).filter((student) => student.id || student.name);
+    const validRows = rows.filter(isValidRosterStudent);
+    if (!validRows.length) {
+      if (els.rosterStatus) els.rosterStatus.textContent = '未读取到有效学生。请使用模板列：student_id, name, class_name。';
+      return;
+    }
+    const rosterText = validRows.map((student) => [student.id, student.name, student.className].filter(Boolean).join(' ')).join('\n');
+    els.studentList.value = rosterText;
+    state.studentText = rosterText;
+    state.groups = createGroups(parseStudentText(rosterText), Number(els.groupSize.value));
+    seedProjects(state.groups);
+    activeGroupId = state.groups[0]?.id || activeGroupId;
+    saveState();
+    render();
+    if (els.rosterStatus) {
+      const ignored = rows.length - validRows.length;
+      els.rosterStatus.textContent = ignored
+        ? `已导入 ${validRows.length} 名学生并启用注册白名单；已忽略 ${ignored} 条格式不完整或学号不合规记录。`
+        : `已导入 ${validRows.length} 名学生并启用注册白名单。`;
+    }
+  } catch {
+    if (els.rosterStatus) els.rosterStatus.textContent = '名单导入失败：请确认文件为 CSV，且包含 student_id、name、class_name。';
+  } finally {
+    if (els.rosterFile) els.rosterFile.value = '';
+  }
+}
+
+function isValidRosterStudent(student) {
+  return /^21\d{2}17\d{3}$/.test(String(student?.id || '').trim()) && Boolean(String(student?.name || '').trim());
 }
 
 function parseCsvLine(line) {
