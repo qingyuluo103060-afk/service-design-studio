@@ -492,6 +492,12 @@ async function registerUser(dataDir, env, sessions, payload) {
   if (role === 'teacher' && !isValidTeacherId(teacherId)) {
     return { status: 400, ok: false, error: '请填写有效教师工号。工号需为 8 位数字，格式为 021XXXXX。' };
   }
+  const rosterResult = role === 'student' && isStudentRosterRequired(env)
+    ? await verifyStudentRoster(dataDir, env, studentId, name)
+    : { ok: true, student: null };
+  if (!rosterResult.ok) {
+    return { status: 403, ok: false, error: rosterResult.error };
+  }
 
   const users = await readUsers(dataDir, env);
   if (role === 'student' && users.some((user) => user.role !== 'teacher' && user.studentId === studentId)) {
@@ -506,7 +512,7 @@ async function registerUser(dataDir, env, sessions, payload) {
     name,
     studentId: role === 'student' ? studentId : '',
     teacherId: role === 'teacher' ? teacherId : '',
-    className: role === 'student' ? String(payload.className || '').trim() : '',
+    className: role === 'student' ? (rosterResult.student?.className || String(payload.className || '').trim()) : '',
     role,
     createdAt: new Date().toISOString(),
     passwordHash: hashPassword(password),
@@ -606,6 +612,42 @@ function isValidStudentId(studentId) {
 
 function isValidTeacherId(teacherId) {
   return /^021\d{5}$/.test(teacherId);
+}
+
+function isStudentRosterRequired(env = process.env) {
+  return String(env.REQUIRE_STUDENT_ROSTER || 'true').toLowerCase() !== 'false';
+}
+
+async function verifyStudentRoster(dataDir, env, studentId, name) {
+  const state = await readState(dataDir, env);
+  const students = extractRosterStudents(state);
+  const matched = students.find((student) => student.id === studentId);
+  if (!matched) {
+    return {
+      ok: false,
+      error: '该学号不在课程名单中，请联系教师先在教师端导入班级名单。',
+    };
+  }
+  if (normalizeRosterName(matched.name) !== normalizeRosterName(name)) {
+    return {
+      ok: false,
+      error: '该学号在课程名单中，但姓名不匹配，请按教师名单填写真实姓名。',
+    };
+  }
+  return { ok: true, student: matched };
+}
+
+function extractRosterStudents(state = {}) {
+  const groups = Array.isArray(state.groups) ? state.groups : [];
+  return groups.flatMap((group) => (Array.isArray(group.members) ? group.members : []).map((member) => ({
+    id: normalizeStudentId(member.id || member.studentId),
+    name: String(member.name || '').trim(),
+    className: String(member.className || group.className || '').trim(),
+  }))).filter((student) => student.id && student.name);
+}
+
+function normalizeRosterName(value) {
+  return String(value || '').replace(/\s+/g, '').trim();
 }
 
 function withoutStatus(result) {
