@@ -7,7 +7,7 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260823-method-v12" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260825-roster-v13" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
@@ -38,7 +38,7 @@
         <span class="brand-mark">SD</span>
         <p class="eyebrow">Public Classroom</p>
         <h2>进入服务设计课堂</h2>
-        <p class="muted">学生用学号注册，教师用工号注册。大模型 API Key 由每位用户自行填写，默认只保存在当前浏览器。</p>
+        <p class="muted">学生须已在教师端课程名单中，学号和姓名匹配后才能注册；教师用工号注册。大模型 API Key 由每位用户自行填写。</p>
         <div id="authTabs" class="auth-tabs">
           <button class="segmented active" data-auth-mode="login">登录</button>
           <button class="segmented" data-auth-mode="register">注册</button>
@@ -61,7 +61,7 @@
           <label>姓名<input id="registerName" type="text" autocomplete="name" /></label>
           <label id="registerClassField">班级<input id="registerClass" type="text" placeholder="产品设计1班" /></label>
           <label><span id="registerIdentityLabel">学号</span><input id="registerStudentId" type="text" inputmode="numeric" maxlength="9" placeholder="9位数字，如 210117001" /></label>
-          <p id="registerIdentityHint" class="field-hint">学号规则：9 位数字，第 1-2 位为 21，第 5-6 位为 17。</p>
+          <p id="registerIdentityHint" class="field-hint">学号规则：9 位数字，第 1-2 位为 21，第 5-6 位为 17；同时必须匹配教师端名单中的姓名。</p>
           <label>密码<input id="registerPassword" type="password" autocomplete="new-password" placeholder="至少 6 位" /></label>
           <button id="registerAccount">注册并进入</button>
         </div>
@@ -349,6 +349,12 @@
               <div class="panel-title"><div><p class="eyebrow">Class</p><h2>班级与分组</h2></div></div>
               <label for="studentList">学生名单</label>
               <textarea id="studentList" rows="7" placeholder="每行：学号 姓名 班级"></textarea>
+              <div class="data-actions roster-actions">
+                <button id="downloadRosterTemplate" class="ghost">下载名单模板</button>
+                <input id="rosterFile" type="file" accept=".csv,text/csv" />
+                <button id="importRosterFile">导入名单并启用注册白名单</button>
+              </div>
+              <p id="rosterStatus" class="field-hint">学生注册必须匹配教师端名单中的学号和姓名。</p>
               <div class="inline-controls"><label for="groupSize">每组人数</label><input id="groupSize" type="number" min="1" max="8" value="5" /><button id="buildGroups">生成分组</button></div>
               <div class="data-actions"><button id="importData" class="ghost">导入数据</button><input id="importFile" type="file" accept="application/json,.json" hidden /><button id="exportData" class="ghost">导出数据</button><button id="resetDemo" class="ghost">重置示例</button></div>
               <div id="groupList" class="group-list"></div>
@@ -441,6 +447,6 @@
         </form>
       </aside>
     </section>
-    <script type="module" src="./src/app.js?v=20260823-method-v12"></script>
+    <script type="module" src="./src/app.js?v=20260825-roster-v13"></script>
   </body>
 </html>
