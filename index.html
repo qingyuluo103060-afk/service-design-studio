@@ -7,7 +7,7 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260827-auth-v15" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260827-docs-lit-v16" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
@@ -185,7 +185,7 @@
                 <label>个性化分析提示词<textarea id="researchAnalysisPrompt" rows="7" placeholder="例如：请识别高频痛点、利益相关者冲突、服务断点，并给出四象限坐标建议。"></textarea></label>
               </div>
               <div class="data-actions">
-                <input id="rawResearchFile" type="file" accept=".txt,.csv,.json,text/plain,text/csv,application/json" />
+                <input id="rawResearchFile" type="file" accept=".txt,.csv,.json,.docx,.pdf,.xls,.xlsx,.png,.jpg,.jpeg,.webp,text/plain,text/csv,application/json,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/png,image/jpeg,image/webp" />
                 <button id="runResearchAnalysis">一键智能分析</button>
               </div>
               <div id="researchAnalysisResult" class="model-result">上传或粘贴数据后，可调用个人大模型接口进行分析；未配置 API Key 时会先生成本地启发式分析。</div>
@@ -200,7 +200,7 @@
                 <label>访谈文字稿<textarea id="interviewTranscript" rows="8" placeholder="粘贴逐字稿、访谈纪要或开放题回答。建议保留受访者原话。"></textarea></label>
                 <label>分析方法<select id="interviewMethod"><option value="thematic">主题分析：熟悉材料-编码-主题-复核-命名-报告</option><option value="grounded">扎根理论：开放编码-主轴编码-选择编码-持续比较-饱和检查</option></select><textarea id="interviewCodingPrompt" rows="5" placeholder="可补充研究问题，例如：重点分析老年患者导诊过程中的情绪压力、信息断点与协同需求。"></textarea></label>
               </div>
-              <div class="data-actions"><input id="interviewTranscriptFile" type="file" accept=".txt,.csv,.json,text/plain,text/csv,application/json" /><button id="runInterviewCoding">按方法步骤分析</button></div>
+              <div class="data-actions"><input id="interviewTranscriptFile" type="file" accept=".txt,.csv,.json,.docx,.pdf,.xls,.xlsx,.png,.jpg,.jpeg,.webp,text/plain,text/csv,application/json,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/png,image/jpeg,image/webp" /><button id="runInterviewCoding">按方法步骤分析</button></div>
               <div id="interviewCodingResult" class="coding-result"></div>
             </section>
             <section class="panel task-panel">
@@ -371,7 +371,7 @@
                 <label>成绩构成<textarea id="gradeComposition" rows="7" placeholder="示例：过程证据30%；方案与蓝图30%；测试评估20%；课程报告20%。"></textarea></label>
               </div>
               <div class="data-actions">
-                <input id="rubricFile" type="file" accept=".txt,.csv,.json,text/plain,text/csv,application/json" />
+                <input id="rubricFile" type="file" accept=".txt,.csv,.json,.docx,.pdf,.xls,.xlsx,text/plain,text/csv,application/json,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
                 <button id="runSmartScore">智能评分与评语</button>
                 <button id="exportGradebook" class="ghost">导出成绩单</button>
               </div>
@@ -447,6 +447,9 @@
         </form>
       </aside>
     </section>
-    <script type="module" src="./src/app.js?v=20260827-auth-v15"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+    <script type="module" src="./src/app.js?v=20260827-docs-lit-v16"></script>
   </body>
 </html>
