@@ -486,6 +486,15 @@ h3 {
   grid-column: 1 / -1;
 }
 
+.group-actions {
+  grid-template-columns: minmax(120px, 1fr) 76px repeat(2, minmax(110px, auto));
+}
+
+.group-actions button {
+  grid-column: auto;
+  white-space: nowrap;
+}
+
 .stage-timeline,
 .group-list,
 .compact-list,
