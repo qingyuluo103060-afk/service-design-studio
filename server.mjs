@@ -333,7 +333,7 @@ async function callModel(payload, env, fetchImpl) {
   }
 
   const model = String(payload.model || env[provider.modelEnv] || provider.defaultModel).trim();
-  const response = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
+  const response = await fetchImpl(buildChatCompletionsUrl(baseUrl, provider.id), {
     method: 'POST',
     headers: {
       authorization: `Bearer ${apiKey}`,
@@ -358,7 +358,11 @@ async function callModel(payload, env, fetchImpl) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    return { ok: false, error: data.error?.message || `模型接口调用失败：${response.status}` };
+    const detail = data.error?.message || data.message || '';
+    const hint = response.status === 405
+      ? '请检查 Base URL：DeepSeek 通常可留空或填 https://api.deepseek.com；OpenAI 通常可留空或填 https://api.openai.com/v1。'
+      : '';
+    return { ok: false, error: [detail || `模型接口调用失败：${response.status}`, hint].filter(Boolean).join(' ') };
   }
 
   return {
@@ -398,6 +402,24 @@ function getPayloadBaseUrl(payload) {
   const value = String(payload.baseUrl || '').trim();
   if (!value) return '';
   return value;
+}
+
+export function buildChatCompletionsUrl(baseUrl, providerId = '') {
+  const value = String(baseUrl || '').trim().replace(/\/+$/, '');
+  if (!value) return '';
+  if (/\/chat\/completions$/i.test(value)) return value;
+  if (providerId === 'openai') {
+    try {
+      const url = new URL(value);
+      if (!url.pathname || url.pathname === '/') {
+        url.pathname = '/v1';
+        return `${url.toString().replace(/\/+$/, '')}/chat/completions`;
+      }
+    } catch {
+      // Fall through to the string-based join below.
+    }
+  }
+  return `${value}/chat/completions`;
 }
 
 async function searchLiterature(payload, fetchImpl) {
