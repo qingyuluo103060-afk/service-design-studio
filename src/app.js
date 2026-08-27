@@ -11,6 +11,7 @@
   METHOD_PROCESS_TEMPLATES,
   buildMethodTaskPlan,
   summarizeMethodTaskProgress,
+  shouldUseLocalLoginFallback,
   createGroups,
   createRandomGroups,
   decodeUploadText,
@@ -623,7 +624,7 @@ async function authenticateAccount(url, payload) {
     });
     const result = await safeJson(response);
     if (!response.ok || !result.ok) {
-      if (url.includes('/login') && response.status === 401 && tryLocalLogin(payload)) {
+      if (url.includes('/login') && response.status === 401 && canUseLocalLoginFallback() && tryLocalLogin(payload)) {
         hideAuthGate();
         renderUserProfile();
         render();
@@ -647,7 +648,7 @@ async function authenticateAccount(url, payload) {
     }
     return true;
   } catch (error) {
-    if (url.includes('/login') && tryLocalLogin(payload)) {
+    if (url.includes('/login') && canUseLocalLoginFallback() && tryLocalLogin(payload)) {
       hideAuthGate();
       renderUserProfile();
       render();
@@ -989,6 +990,14 @@ function renderCurrentMethodPanel() {
 
 async function loadCurrentUser() {
   if (isLocalSession) {
+    if (!canUseLocalLoginFallback()) {
+      currentUser = null;
+      sessionToken = '';
+      isLocalSession = false;
+      sessionStorage.removeItem(SESSION_TOKEN_KEY);
+      showAuthGate('请使用服务器账号重新登录。本机备份登录不能调用公网大模型接口。');
+      return;
+    }
     currentUser = loadLocalSessionUser();
     applyRolePermissions();
     renderUserProfile();
@@ -3275,6 +3284,13 @@ function tryLocalLogin(payload) {
   sessionStorage.setItem(SESSION_TOKEN_KEY, sessionToken);
   els.authMessage.textContent = '已使用本机账号备份进入。Render 服务器账号可能已因重部署丢失，建议后续接入持久数据库。';
   return true;
+}
+
+function canUseLocalLoginFallback() {
+  return shouldUseLocalLoginFallback({
+    protocol: location.protocol,
+    userAccounts: Boolean(appConfig.userAccounts),
+  });
 }
 
 function loadLocalSessionUser() {
