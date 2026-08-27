@@ -11,6 +11,7 @@ import {
   createRandomGroups,
   COURSE_MODULES,
   decodeUploadText,
+  shouldUseLocalLoginFallback,
   METHOD_TASK_CHAIN,
   METHOD_PROCESS_TEMPLATES,
   buildMethodTaskPlan,
@@ -37,6 +38,9 @@ assert.ok(studentModules.includes('research') && studentModules.includes('testin
 assert.ok(!studentModules.includes('teacher-dashboard'), 'students should not see teacher dashboard module');
 assert.ok(teacherModules.includes('teacher-dashboard') && teacherModules.includes('class-management'));
 assert.ok(COURSE_MODULES.every((item) => item.icon && item.group), 'each module needs a sidebar icon and group');
+assert.equal(shouldUseLocalLoginFallback({ protocol: 'https:', userAccounts: true }), false);
+assert.equal(shouldUseLocalLoginFallback({ protocol: 'file:', userAccounts: true }), true);
+assert.equal(shouldUseLocalLoginFallback({ protocol: 'https:', userAccounts: false }), true);
 assert.deepEqual(
   METHOD_TASK_CHAIN.map((task) => task.id),
   ['topic', 'literature', 'research', 'coding', 'kanoAhp', 'triz', 'topsisBlueprint', 'testingReport'],
