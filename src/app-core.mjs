@@ -300,6 +300,10 @@ export function getVisibleModules(role = 'student') {
   return COURSE_MODULES.filter((item) => item.roles.includes(normalizedRole));
 }
 
+export function shouldUseLocalLoginFallback(options = {}) {
+  return options.protocol === 'file:' || options.userAccounts === false;
+}
+
 const STAGE_TOOLKITS = {
   empathy: {
     symbol: '探',
