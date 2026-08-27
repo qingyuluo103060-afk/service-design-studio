@@ -7,7 +7,7 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260825-roster-v13" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260827-fixes-v14" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
@@ -355,7 +355,7 @@
                 <button id="importRosterFile">导入名单并启用注册白名单</button>
               </div>
               <p id="rosterStatus" class="field-hint">学生注册必须匹配教师端名单中的学号和姓名。</p>
-              <div class="inline-controls"><label for="groupSize">每组人数</label><input id="groupSize" type="number" min="1" max="8" value="5" /><button id="buildGroups">生成分组</button></div>
+              <div class="inline-controls group-actions"><label for="groupSize">每组人数</label><input id="groupSize" type="number" min="1" max="8" value="5" /><button id="buildGroups">按顺序分组</button><button id="randomBuildGroups" class="ghost">随机分组</button></div>
               <div class="data-actions"><button id="importData" class="ghost">导入数据</button><input id="importFile" type="file" accept="application/json,.json" hidden /><button id="exportData" class="ghost">导出数据</button><button id="resetDemo" class="ghost">重置示例</button></div>
               <div id="groupList" class="group-list"></div>
             </section>
@@ -447,6 +447,6 @@
         </form>
       </aside>
     </section>
-    <script type="module" src="./src/app.js?v=20260825-roster-v13"></script>
+    <script type="module" src="./src/app.js?v=20260827-fixes-v14"></script>
   </body>
 </html>
