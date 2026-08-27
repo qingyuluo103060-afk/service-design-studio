@@ -8,7 +8,9 @@ import {
   calculateStageProgress,
   classifyKano,
   createGroups,
+  createRandomGroups,
   COURSE_MODULES,
+  decodeUploadText,
   METHOD_TASK_CHAIN,
   METHOD_PROCESS_TEMPLATES,
   buildMethodTaskPlan,
@@ -56,6 +58,20 @@ const groups = createGroups(students, 2);
 assert.equal(groups.length, 3, 'five students at two per group should create three groups');
 assert.deepEqual(groups[0].members.map((item) => item.name), ['陈一', '林二']);
 assert.equal(groups[2].name, '第3组');
+
+const randomGroups = createRandomGroups(students, 2, () => 0.1);
+assert.equal(randomGroups.length, 3, 'random grouping should keep the same group count');
+assert.deepEqual(
+  randomGroups.flatMap((group) => group.members).map((item) => item.id).sort(),
+  students.map((item) => item.id).sort(),
+  'random grouping should keep every student exactly once',
+);
+assert.notDeepEqual(randomGroups[0].members.map((item) => item.name), ['陈一', '林二']);
+
+const gbkRosterBytes = new Uint8Array([115,116,117,100,101,110,116,95,105,100,44,110,97,109,101,44,99,108,97,115,115,95,110,97,109,101,10,50,49,48,49,49,55,48,48,49,44,213,197,200,253,44,183,254,206,241,201,232,188,198,49,176,224]);
+const decodedRoster = decodeUploadText(gbkRosterBytes.buffer);
+assert.equal(decodedRoster.includes('张三'), true, 'GB18030 CSV uploads should preserve Chinese names');
+assert.equal(decodedRoster.includes('服务设计1班'), true, 'GB18030 CSV uploads should preserve Chinese class names');
 
 const project = {
   stages: {
