@@ -12,6 +12,8 @@
   buildMethodTaskPlan,
   summarizeMethodTaskProgress,
   createGroups,
+  createRandomGroups,
+  decodeUploadText,
   extractKeywords,
   getStakeholderVisuals,
   getVisibleModules,
@@ -83,6 +85,7 @@ const els = {
   rosterStatus: document.querySelector('#rosterStatus'),
   groupSize: document.querySelector('#groupSize'),
   buildGroups: document.querySelector('#buildGroups'),
+  randomBuildGroups: document.querySelector('#randomBuildGroups'),
   stageNav: document.querySelector('#stageNav'),
   groupList: document.querySelector('#groupList'),
   activeStageLabel: document.querySelector('#activeStageLabel'),
@@ -283,6 +286,15 @@ function bindEvents() {
     saveState();
     render();
   });
+  els.randomBuildGroups?.addEventListener('click', () => {
+    const students = parseStudentText(els.studentList.value);
+    state.studentText = els.studentList.value;
+    state.groups = createRandomGroups(students, Number(els.groupSize.value));
+    seedProjects(state.groups);
+    activeGroupId = state.groups[0]?.id || activeGroupId;
+    saveState();
+    render();
+  });
   els.downloadRosterTemplate?.addEventListener('click', downloadRosterTemplate);
   els.importRosterFile?.addEventListener('click', importRosterFile);
 
@@ -361,7 +373,7 @@ function bindEvents() {
     const file = els.importFile.files?.[0];
     if (!file) return;
     try {
-      const imported = JSON.parse(await file.text());
+      const imported = JSON.parse(await readUploadText(file));
       const result = validateClassroomState(imported);
       if (!result.ok) {
         window.alert(result.error);
@@ -475,14 +487,18 @@ function bindEvents() {
   els.body.addEventListener('click', handleVisualizationClick);
 }
 
-function readTextFileInto(fileInput, textArea) {
+async function readTextFileInto(fileInput, textArea) {
   const file = fileInput?.files?.[0];
   if (!file || !textArea) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    textArea.value = String(reader.result || '');
-  };
-  reader.readAsText(file, 'utf-8');
+  try {
+    textArea.value = await readUploadText(file);
+  } catch {
+    window.alert('文件读取失败，请确认文件未损坏。');
+  }
+}
+
+async function readUploadText(file) {
+  return decodeUploadText(await file.arrayBuffer());
 }
 
 function updateEvidence(event) {
@@ -762,6 +778,10 @@ async function testModelConnection() {
         baseUrl: providerSettings.baseUrl,
       }),
     });
+    if (response.status === 401) {
+      handleModelAuthExpired();
+      return;
+    }
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.error || '连接测试失败');
     els.modelStatus.textContent = '连接可用';
@@ -808,7 +828,7 @@ async function generateModelAdvice() {
     });
     const result = await response.json();
     if (response.status === 401) {
-      showAuthGate('访问口令已失效，请重新输入。');
+      handleModelAuthExpired();
       return;
     }
     els.modelResult.textContent = result.ok ? result.content : result.error || '模型未返回有效结果。';
@@ -1594,7 +1614,7 @@ async function analyzeKanoSurvey() {
     els.kanoSurveyResult.textContent = `未上传问卷数据，已根据当前需求评分生成分类建议：\n${fallback.join('\n')}`;
     return;
   }
-  const text = await file.text();
+  const text = await readUploadText(file);
   const lines = text.split(/\r?\n/).filter(Boolean);
   const headers = parseCsvLine(lines[0] || '').map((cell) => cell.trim().toLowerCase());
   const rows = lines.slice(1).map((line) => parseCsvLine(line));
@@ -1712,7 +1732,7 @@ function downloadJourneyTemplate() {
 async function importJourneyFile() {
   const file = els.journeyFile?.files?.[0];
   if (!file) return;
-  const table = parseCsvTable(await file.text());
+  const table = parseCsvTable(await readUploadText(file));
   const index = csvHeaderIndex(table.headers);
   activeProject().journey = table.rows.map((row) => ({
     stage: row[index('stage', '阶段')] || '',
@@ -1794,7 +1814,7 @@ function downloadTrizTemplate() {
 async function importTrizFile() {
   const file = els.trizFile?.files?.[0];
   if (!file) return;
-  const table = parseCsvTable(await file.text());
+  const table = parseCsvTable(await readUploadText(file));
   const index = csvHeaderIndex(table.headers);
   activeProject().triz = table.rows.map((row) => ({
     need: row[index('need', '需求')] || '',
@@ -1877,7 +1897,7 @@ function downloadTopsisTemplate() {
 async function analyzeTopsisMatrix() {
   const file = els.topsisMatrixFile?.files?.[0];
   const project = activeProject();
-  const parsed = file ? parseTopsisMatrixCsv(await file.text()) : { items: project.concepts, criteria: topsisCriteria() };
+  const parsed = file ? parseTopsisMatrixCsv(await readUploadText(file)) : { items: project.concepts, criteria: topsisCriteria() };
   if (!parsed.items.length || !parsed.criteria.length) {
     els.topsisMatrixResult.textContent = '未识别到方案评价矩阵。请上传包含“方案,创新性,可行性,服务质量,风险”的 CSV。';
     return;
@@ -2512,10 +2532,24 @@ async function requestModelText(prompt) {
       context: buildCurrentModelContext(),
     }),
   });
+  if (response.status === 401) {
+    handleModelAuthExpired();
+    throw new Error('课堂登录已失效，请重新登录后再调用大模型');
+  }
   if (!response.ok) throw new Error(`接口返回 ${response.status}`);
   const data = await response.json();
   if (data.ok === false) throw new Error(data.error || '模型未返回有效结果');
   return data.content || data.text || data.message || '';
+}
+
+function handleModelAuthExpired() {
+  const message = '课堂登录已失效，请退出后重新登录教师/学生账号，再测试个人大模型 API。';
+  sessionToken = '';
+  sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  isLocalSession = false;
+  els.modelStatus.textContent = '需重新登录';
+  if (els.modelResult) els.modelResult.textContent = message;
+  showAuthGate(message);
 }
 
 async function requestModelJson(prompt, shapeHint) {
@@ -2930,7 +2964,7 @@ async function importRosterFile() {
     return;
   }
   try {
-    const table = parseCsvTable(await file.text());
+    const table = parseCsvTable(await readUploadText(file));
     const index = csvHeaderIndex(table.headers);
     const rows = table.rows.map((row) => ({
       id: String(row[index('student_id', 'student id', '学号')] || '').trim(),
