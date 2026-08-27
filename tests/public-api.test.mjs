@@ -14,16 +14,17 @@ const capturedRequests = [];
 const fakeFetch = async (url, options = {}) => {
   capturedRequests.push({ url, options });
   if (String(url).includes('api.openalex.org/works')) {
+    const isChineseQuery = decodeURIComponent(String(url)).includes('服务设计');
     return new Response(
       JSON.stringify({
         results: [{
           id: 'https://openalex.org/W1',
-          title: 'Service design for hospital navigation',
+          title: isChineseQuery ? '近年服务设计与用户体验研究' : 'Service design for hospital navigation',
           publication_year: 2024,
           cited_by_count: 12,
-          doi: 'https://doi.org/10.1000/example',
-          primary_location: { source: { display_name: 'Design Journal' } },
-          authorships: [{ author: { display_name: 'A. Researcher' } }],
+          doi: isChineseQuery ? 'https://doi.org/10.1000/chinese' : 'https://doi.org/10.1000/example',
+          primary_location: { source: { display_name: isChineseQuery ? '包装工程' : 'Design Journal' } },
+          authorships: [{ author: { display_name: isChineseQuery ? '张研究' : 'A. Researcher' } }],
         }],
       }),
       { status: 200, headers: { 'content-type': 'application/json' } },
@@ -69,6 +70,11 @@ try {
 
   const config = await fetchJson(`${baseUrl}/api/config`);
   assert.equal(config.authRequired, true);
+  assert.deepEqual(config.storage, {
+    durable: false,
+    driver: 'file',
+    warning: '当前未连接持久数据库，Render 重启或重新部署后注册账号可能丢失。请在 Render 配置 DATABASE_URL。',
+  });
   assert.deepEqual(
     config.providers.find((provider) => provider.id === 'deepseek'),
     { id: 'deepseek', name: 'DeepSeek', configured: false, supportsUserKey: true },
@@ -134,9 +140,18 @@ try {
     body: JSON.stringify({ query: 'hospital navigation service design', limit: 4 }),
   });
   assert.equal(literature.ok, true);
-  assert.equal(literature.items.length, 2);
+  assert.ok(literature.items.length >= 2);
   assert.ok(literature.items.some((item) => item.source === 'OpenAlex'));
   assert.ok(literature.items.some((item) => item.source === 'Crossref'));
+  assert.ok(literature.items.some((item) => /服务设计/.test(item.title)), 'literature search should include recent Chinese-oriented results');
+  assert.ok(
+    capturedRequests.some((request) => String(request.url).includes('from_publication_date:2021-01-01')),
+    'OpenAlex requests should prefer literature from the recent 3-5 year window',
+  );
+  assert.ok(
+    capturedRequests.some((request) => String(request.url).includes('from-pub-date:2021-01-01')),
+    'Crossref requests should prefer literature from the recent 3-5 year window',
+  );
 
   console.log('public api tests passed');
 } finally {
