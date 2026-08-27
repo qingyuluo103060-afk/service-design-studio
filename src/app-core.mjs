@@ -366,6 +366,39 @@ export function createGroups(students, groupSize = 5) {
   return groups;
 }
 
+export function createRandomGroups(students, groupSize = 5, random = Math.random) {
+  const cleanStudents = students
+    .map((student, index) => ({
+      id: student.id || `s${index + 1}`,
+      name: String(student.name || '').trim(),
+      className: String(student.className || '').trim(),
+    }))
+    .filter((student) => student.name);
+  const shuffled = [...cleanStudents];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.max(0, Math.min(0.999999, random())) * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return createGroups(shuffled, groupSize);
+}
+
+export function decodeUploadText(buffer, fallbackEncoding = 'gb18030') {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer || []);
+  if (!bytes.length) return '';
+  const decode = (encoding) => new TextDecoder(encoding, { fatal: false }).decode(bytes).replace(/^\uFEFF/, '');
+  const utf8 = decode('utf-8');
+  if (!utf8.includes('\uFFFD')) return utf8;
+  try {
+    return decode(fallbackEncoding);
+  } catch {
+    try {
+      return decode('gbk');
+    } catch {
+      return utf8;
+    }
+  }
+}
+
 export function createEmptyProject() {
   return {
     title: '未命名服务设计项目',
