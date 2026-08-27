@@ -499,7 +499,59 @@ async function readTextFileInto(fileInput, textArea) {
 }
 
 async function readUploadText(file) {
-  return decodeUploadText(await file.arrayBuffer());
+  const name = String(file.name || '').toLowerCase();
+  const type = String(file.type || '').toLowerCase();
+  const buffer = await file.arrayBuffer();
+  if (name.endsWith('.docx') || type.includes('wordprocessingml.document')) return extractDocxText(buffer);
+  if (name.endsWith('.xlsx') || name.endsWith('.xls') || type.includes('spreadsheet')) return extractSpreadsheetText(buffer);
+  if (name.endsWith('.pdf') || type.includes('pdf')) return extractPdfText(buffer);
+  if (type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(name)) return extractImageUploadNote(file);
+  return decodeUploadText(buffer);
+}
+
+async function extractDocxText(buffer) {
+  if (!window.mammoth?.extractRawText) {
+    return '已识别为 Word 文档，但 Word 解析组件尚未加载完成。请刷新页面后重试，或先将文档另存为 txt/csv。';
+  }
+  const result = await window.mammoth.extractRawText({ arrayBuffer: buffer });
+  return String(result.value || '').trim() || 'Word 文档已读取，但未提取到可分析文本。';
+}
+
+function extractSpreadsheetText(buffer) {
+  if (!window.XLSX?.read) {
+    return '已识别为 Excel 文档，但表格解析组件尚未加载完成。请刷新页面后重试，或先导出为 csv。';
+  }
+  const workbook = window.XLSX.read(buffer, { type: 'array' });
+  return workbook.SheetNames.map((sheetName) => {
+    const csv = window.XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName], { blankrows: false });
+    return `# ${sheetName}\n${csv.trim()}`;
+  }).filter(Boolean).join('\n\n') || 'Excel 文档已读取，但未提取到可分析表格。';
+}
+
+async function extractPdfText(buffer) {
+  if (!window.pdfjsLib?.getDocument) {
+    return '已识别为 PDF 文档，但 PDF 解析组件尚未加载完成。请刷新页面后重试，或先复制正文到文本框。';
+  }
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  const pdf = await window.pdfjsLib.getDocument({ data: buffer }).promise;
+  const pages = [];
+  const maxPages = Math.min(pdf.numPages, 20);
+  for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const text = content.items.map((item) => item.str).join(' ').replace(/\s+/g, ' ').trim();
+    if (text) pages.push(`第 ${pageNumber} 页：${text}`);
+  }
+  const suffix = pdf.numPages > maxPages ? `\n\n提示：PDF 共 ${pdf.numPages} 页，当前为保护浏览器性能仅读取前 ${maxPages} 页。` : '';
+  return `${pages.join('\n\n')}${suffix}`.trim() || 'PDF 文档已读取，但未提取到可分析文本；如为扫描图片，请先使用 OCR 转文字。';
+}
+
+function extractImageUploadNote(file) {
+  return [
+    `已上传图片文件：${file.name}`,
+    `类型：${file.type || '未知'}；大小：${Math.round((file.size || 0) / 1024)} KB。`,
+    '当前网页端已接收图片作为调研材料线索。若图片包含访谈记录、便利贴或手写内容，请先使用 OCR 提取文字，或将关键文字补充到文本框后再进行智能分析。',
+  ].join('\n');
 }
 
 function updateEvidence(event) {
@@ -548,7 +600,7 @@ function showAuthGate(message = '') {
   els.authGate.hidden = false;
   renderAuthMode();
   els.accessCodeInput.value = accessCode;
-  els.authMessage.textContent = message;
+  els.authMessage.textContent = message || appConfig.storage?.warning || '';
   const focusTarget = activeAuthMode === 'register' ? els.registerName : activeAuthMode === 'code' ? els.accessCodeInput : els.loginStudentId;
   setTimeout(() => focusTarget.focus(), 0);
 }
@@ -1128,8 +1180,7 @@ function renderProject() {
   els.projectTitle.value = project.title;
   els.projectScenario.value = project.scenario;
   if (els.literatureResult) {
-    els.literatureResult.textContent = project.literatureReview?.result
-      || '选题确定后，可使用个人大模型 API 生成相关文献方向、检索关键词和研究空白分析。';
+    renderLiteratureResult(project.literatureReview);
   }
 }
 
@@ -1240,17 +1291,17 @@ async function recommendLiterature() {
   const project = activeProject();
   const query = `${project.title}\n${project.scenario}`.trim();
   if (!query || project.title === '未命名服务设计项目') {
-    els.literatureResult.textContent = '请先填写具体项目主题和真实服务场景，再进行文献推荐。';
+    els.literatureResult.innerHTML = '<p>请先填写具体项目主题和真实服务场景，再进行文献推荐。</p>';
     return;
   }
   els.recommendLiterature.disabled = true;
-  els.literatureResult.textContent = '正在检索 OpenAlex / Crossref 公开文献题录，并准备研究空白分析...';
+  els.literatureResult.innerHTML = '<p>正在检索 OpenAlex / Crossref 公开文献题录，并准备研究空白分析...</p>';
   let literatureItems = [];
   try {
     const response = await apiFetch('./api/literature/search', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ query, limit: 6 }),
+      body: JSON.stringify({ query, limit: 8 }),
     });
     const result = await safeJson(response);
     if (response.ok && result.ok) literatureItems = result.items || [];
@@ -1260,7 +1311,7 @@ async function recommendLiterature() {
   const prompt = buildLiteraturePrompt(project, literatureItems);
   try {
     const aiText = await requestModelText(prompt);
-    saveLiteratureResult(project, query, `${formatLiteratureItems(literatureItems)}\n\n研究空白分析：\n${aiText}`, literatureItems);
+    saveLiteratureResult(project, query, `${formatLiteratureItems(literatureItems)}\n\n研究空白分析：\n${normalizeAiLiteratureText(aiText)}`, literatureItems);
   } catch (error) {
     saveLiteratureResult(project, query, `${formatLiteratureItems(literatureItems)}\n\n${buildLocalLiteratureReview(project, literatureItems)}\n\n未能调用个人大模型，已生成本地文献分析模板。原因：${error.message}`, literatureItems);
   } finally {
@@ -1299,12 +1350,13 @@ function buildLiteraturePrompt(project, items = []) {
     references,
     '',
     '请输出：',
-    '1. 中文与英文检索关键词各8-12个。',
-    '2. 推荐检索方向或文献主题，不要编造具体不存在的论文题名、作者、DOI。',
+    '1. 中文与英文检索关键词各8-12个，按“中文关键词 | English keywords | 用途”表格形式呈现。',
+    '2. 近3-5年中文文献应优先作为检索方向，英文文献保持补充视角；不要编造具体不存在的论文题名、作者、DOI。',
     '3. 已有研究可能关注什么。',
     '4. 本项目可切入的研究空白或设计机会。',
     '5. 后续调研应优先验证的3-5个问题。',
-    '6. 如何把文献启发接入 Kano-AHP-TRIZ-TOPSIS 方法链。',
+    '6. 如何把文献启发接入“调研-访谈编码/主题分析-Kano-AHP-TRIZ-TOPSIS-服务蓝图”的方法链。',
+    '格式要求：不要使用星号作为加粗或列表符号；标题单独成行；内容短段落化，便于课堂阅读。',
   ].join('\n');
 }
 
@@ -1331,6 +1383,90 @@ function formatLiteratureItems(items = []) {
       `${index + 1}. ${item.title}（${item.year || 'n.d.'}，${item.source}，引用 ${item.citedBy || 0}）\n   作者：${item.authors || '未记录'}；来源：${item.venue || '未记录'}；DOI：${item.doi || '未记录'}`,
     ),
   ].join('\n');
+}
+
+function renderLiteratureResult(review) {
+  if (!review?.result) {
+    els.literatureResult.innerHTML = '<p>选题确定后，可使用个人大模型 API 生成相关文献方向、检索关键词和研究空白分析。</p>';
+    return;
+  }
+  els.literatureResult.innerHTML = buildLiteratureResultHtml(review);
+}
+
+function buildLiteratureResultHtml(review) {
+  const items = Array.isArray(review.items) ? review.items : [];
+  const text = normalizeAiLiteratureText(review.result);
+  const analysis = text.replace(formatLiteratureItems(items), '').trim();
+  return `
+    <div class="literature-output">
+      <section class="literature-block">
+        <h3>公开文献题录</h3>
+        <p>优先呈现近年中文取向题录，同时保留英文数据库结果；正式引用前仍建议人工核验 DOI、作者与期刊信息。</p>
+        ${renderLiteratureTable(items)}
+      </section>
+      <section class="literature-block">
+        <h3>中英文关键词建议</h3>
+        ${renderKeywordSuggestionTable(review.query)}
+      </section>
+      <section class="literature-block">
+        <h3>研究空白与方法链启发</h3>
+        ${renderFormattedAnalysis(analysis)}
+      </section>
+    </div>
+  `;
+}
+
+function renderLiteratureTable(items = []) {
+  if (!items.length) return '<p class="muted">暂未检索到稳定结果。建议更换关键词后重试。</p>';
+  const rows = items.slice(0, 14).map((item, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td><strong>${escapeHtml(item.title || '未记录题名')}</strong><small>${escapeHtml(item.authors || '作者未记录')}</small></td>
+      <td>${escapeHtml(item.year || 'n.d.')}</td>
+      <td>${escapeHtml(item.source || '公开数据库')}</td>
+      <td>${escapeHtml(item.venue || '未记录')}</td>
+      <td>${escapeHtml(item.doi || '未记录')}</td>
+    </tr>
+  `).join('');
+  return `<div class="table-scroll"><table class="literature-table">
+    <thead><tr><th>#</th><th>题名 / 作者</th><th>年份</th><th>来源</th><th>刊物</th><th>DOI</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+function renderKeywordSuggestionTable(query = '') {
+  const seed = extractKeywords(query || '').map((item) => item.word).filter(Boolean);
+  const cn = [...new Set([...seed, '服务设计', '用户体验', '服务蓝图', 'Kano模型', 'AHP', 'TRIZ', 'TOPSIS', '需求分析'])].slice(0, 10);
+  const en = ['service design', 'user experience', 'service blueprint', 'Kano model', 'analytic hierarchy process', 'TRIZ', 'TOPSIS', 'service quality', 'user journey', 'need analysis'];
+  const rows = cn.map((word, index) => `
+    <tr>
+      <td>${escapeHtml(word)}</td>
+      <td>${escapeHtml(en[index] || en[index % en.length])}</td>
+      <td>${index < 3 ? '确定检索入口' : index < 7 ? '连接方法链' : '补充评价与报告写作'}</td>
+    </tr>
+  `).join('');
+  return `<div class="table-scroll"><table class="literature-table compact">
+    <thead><tr><th>中文关键词</th><th>English keywords</th><th>建议用途</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+function renderFormattedAnalysis(text = '') {
+  const cleaned = normalizeAiLiteratureText(text).split('\n').map((line) => line.trim()).filter(Boolean);
+  if (!cleaned.length) return '<p class="muted">暂无研究空白分析。请先连接个人大模型或重新生成。</p>';
+  return cleaned.map((line) => {
+    const plain = line.replace(/^\d+[.、]\s*/, '');
+    if (/[:：]$/.test(plain) || plain.length <= 18) return `<h4>${escapeHtml(plain.replace(/[:：]$/, ''))}</h4>`;
+    return `<p>${escapeHtml(plain)}</p>`;
+  }).join('');
+}
+
+function normalizeAiLiteratureText(text = '') {
+  return String(text || '')
+    .replace(/\*\*/g, '')
+    .replace(/^\s*[*-]\s+/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function renderStage() {
