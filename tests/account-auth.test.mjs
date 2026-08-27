@@ -176,6 +176,23 @@ try {
   });
   assert.equal(Array.isArray(authorizedState.groups), true);
 
+  const restartedServer = await startServer({
+    port: 0,
+    rootDir: fileURLToPath(new URL('..', import.meta.url)),
+    dataDir: tempDir,
+    env: { ENABLE_USER_ACCOUNTS: 'true' },
+    silent: true,
+  });
+  try {
+    const restartedMe = await fetchJson(`http://127.0.0.1:${restartedServer.port}/api/me`, {
+      headers: { authorization: `Bearer ${loginResult.token}` },
+    });
+    assert.equal(restartedMe.user.studentId, '210117001');
+    assert.equal(restartedMe.user.name, '陈一');
+  } finally {
+    await restartedServer.close();
+  }
+
   console.log('account auth tests passed');
 } finally {
   await server.close();
