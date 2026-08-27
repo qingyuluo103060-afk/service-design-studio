@@ -284,12 +284,24 @@ export function getPublicConfig(env = process.env) {
   return {
     authRequired: userAccounts || Boolean(getAccessCode(env)),
     userAccounts,
+    storage: getStorageStatus(env),
     providers: PROVIDERS.map((provider) => ({
       id: provider.id,
       name: provider.name,
       configured: false,
       supportsUserKey: true,
     })),
+  };
+}
+
+function getStorageStatus(env = process.env) {
+  const hasDatabase = Boolean(String(env.DATABASE_URL || '').trim());
+  return {
+    durable: hasDatabase,
+    driver: hasDatabase ? 'postgres' : 'file',
+    warning: hasDatabase
+      ? ''
+      : '当前未连接持久数据库，Render 重启或重新部署后注册账号可能丢失。请在 Render 配置 DATABASE_URL。',
   };
 }
 
@@ -427,24 +439,37 @@ async function searchLiterature(payload, fetchImpl) {
   const limit = Math.max(1, Math.min(12, Number(payload.limit) || 6));
   if (!query) return { ok: false, error: '请先提供检索关键词或项目选题', items: [] };
   const encoded = encodeURIComponent(query.slice(0, 240));
-  const [openAlex, crossref] = await Promise.allSettled([
+  const chineseQuery = buildChineseLiteratureQuery(query);
+  const encodedChinese = encodeURIComponent(chineseQuery.slice(0, 240));
+  const [openAlex, crossref, chineseOpenAlex, chineseCrossref] = await Promise.allSettled([
     fetchOpenAlexWorks(fetchImpl, encoded, limit),
     fetchCrossrefWorks(fetchImpl, encoded, limit),
+    fetchOpenAlexWorks(fetchImpl, encodedChinese, limit, { recent: true }),
+    fetchCrossrefWorks(fetchImpl, encodedChinese, limit, { recent: true }),
   ]);
   const items = [
     ...(openAlex.status === 'fulfilled' ? openAlex.value : []),
     ...(crossref.status === 'fulfilled' ? crossref.value : []),
+    ...(chineseOpenAlex.status === 'fulfilled' ? chineseOpenAlex.value : []),
+    ...(chineseCrossref.status === 'fulfilled' ? chineseCrossref.value : []),
   ];
   return {
     ok: true,
     query,
-    sources: ['OpenAlex', 'Crossref'],
+    sources: ['OpenAlex', 'Crossref', 'OpenAlex 近年中文取向', 'Crossref 近年中文取向'],
     items: dedupeLiterature(items).slice(0, limit * 2),
   };
 }
 
-async function fetchOpenAlexWorks(fetchImpl, encodedQuery, limit) {
-  const response = await fetchImpl(`https://api.openalex.org/works?search=${encodedQuery}&per-page=${limit}&sort=cited_by_count:desc`, {
+function buildChineseLiteratureQuery(query) {
+  const base = String(query || '').trim();
+  const chineseTerms = '服务设计 用户体验 设计研究 Kano AHP TRIZ TOPSIS 需求分析';
+  return `${base} ${chineseTerms}`.trim();
+}
+
+async function fetchOpenAlexWorks(fetchImpl, encodedQuery, limit, options = {}) {
+  const recentFilter = options.recent ? '&filter=from_publication_date:2021-01-01' : '';
+  const response = await fetchImpl(`https://api.openalex.org/works?search=${encodedQuery}&per-page=${limit}&sort=cited_by_count:desc${recentFilter}`, {
     headers: { accept: 'application/json' },
   });
   const data = await response.json().catch(() => ({}));
@@ -462,8 +487,9 @@ async function fetchOpenAlexWorks(fetchImpl, encodedQuery, limit) {
   })).filter((item) => item.title);
 }
 
-async function fetchCrossrefWorks(fetchImpl, encodedQuery, limit) {
-  const response = await fetchImpl(`https://api.crossref.org/works?query.bibliographic=${encodedQuery}&rows=${limit}&sort=is-referenced-by-count&order=desc`, {
+async function fetchCrossrefWorks(fetchImpl, encodedQuery, limit, options = {}) {
+  const recentFilter = options.recent ? '&filter=from-pub-date:2021-01-01' : '';
+  const response = await fetchImpl(`https://api.crossref.org/works?query.bibliographic=${encodedQuery}&rows=${limit}&sort=is-referenced-by-count&order=desc${recentFilter}`, {
     headers: { accept: 'application/json' },
   });
   const data = await response.json().catch(() => ({}));
