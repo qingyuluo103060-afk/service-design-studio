@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
-import { pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,6 +10,7 @@ const ROOT_DIR = fileURLToPath(new URL('.', import.meta.url));
 const DEFAULT_DATA_DIR = process.env.DATA_DIR || join(ROOT_DIR, 'data');
 const STATE_FILE = 'classroom-state.json';
 const USERS_FILE = 'users.json';
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const PROVIDERS = [
   {
     id: 'openai',
@@ -219,7 +220,7 @@ async function routeRequest(request, response, context) {
   }
 
   if (url.pathname === '/api/me' && request.method === 'GET') {
-    const user = getSessionUser(request, context.sessions);
+    const user = getSessionUser(request, context.sessions, context.env);
     if (!user) {
       sendJson(response, 401, { ok: false, error: '请先登录' });
       return;
@@ -302,7 +303,7 @@ function userAccountsEnabled(env) {
 
 function hasAccess(request, env, sessions) {
   const accountsEnabled = userAccountsEnabled(env);
-  if (accountsEnabled && getSessionUser(request, sessions)) return true;
+  if (accountsEnabled && getSessionUser(request, sessions, env)) return true;
   const accessCode = getAccessCode(env);
   if (accessCode) return getRequestHeader(request, 'x-access-code') === accessCode;
   return !accountsEnabled;
@@ -520,7 +521,7 @@ async function registerUser(dataDir, env, sessions, payload) {
   users.push(user);
   await writeUsers(dataDir, users, env);
   const publicUser = toPublicUser(user);
-  const token = createSession(sessions, publicUser);
+  const token = createSession(sessions, publicUser, env);
   return { ok: true, token, user: publicUser };
 }
 
@@ -537,7 +538,7 @@ async function loginUser(dataDir, env, sessions, payload) {
     return { ok: false, error: role === 'teacher' ? '工号或密码不正确' : '学号或密码不正确' };
   }
   const publicUser = toPublicUser(user);
-  return { ok: true, token: createSession(sessions, publicUser), user: publicUser };
+  return { ok: true, token: createSession(sessions, publicUser, env), user: publicUser };
 }
 
 async function readUsers(dataDir, env = process.env) {
@@ -570,17 +571,48 @@ function verifyPassword(password, storedHash = '') {
   return savedHash.length === nextHash.length && timingSafeEqual(savedHash, nextHash);
 }
 
-function createSession(sessions, user) {
-  const token = randomBytes(24).toString('hex');
-  sessions.set(token, { user, createdAt: Date.now() });
+function createSession(sessions, user, env = process.env) {
+  const issuedAt = Date.now();
+  const payload = { user, iat: issuedAt, exp: issuedAt + SESSION_TTL_MS };
+  const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  const token = `sd.${encoded}.${signSessionPayload(encoded, env)}`;
+  sessions.set(token, { user, createdAt: issuedAt, expiresAt: payload.exp });
   return token;
 }
 
-function getSessionUser(request, sessions) {
+function getSessionUser(request, sessions, env = process.env) {
   const authorization = getRequestHeader(request, 'authorization') || '';
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   if (!match) return null;
-  return sessions.get(match[1])?.user || null;
+  const token = match[1];
+  const stored = sessions.get(token);
+  if (stored?.user && (!stored.expiresAt || stored.expiresAt > Date.now())) return stored.user;
+  const payload = verifySessionToken(token, env);
+  return payload?.user || null;
+}
+
+function signSessionPayload(encodedPayload, env = process.env) {
+  return createHmac('sha256', getSessionSecret(env)).update(encodedPayload).digest('base64url');
+}
+
+function verifySessionToken(token, env = process.env) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3 || parts[0] !== 'sd') return null;
+  const expected = signSessionPayload(parts[1], env);
+  const actualBuffer = Buffer.from(parts[2]);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length || !timingSafeEqual(actualBuffer, expectedBuffer)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    if (!payload?.user || Number(payload.exp) <= Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function getSessionSecret(env = process.env) {
+  return String(env.SESSION_SECRET || env.APP_ACCESS_CODE || 'service-design-studio-dev-session-secret').trim();
 }
 
 function toPublicUser(user) {
