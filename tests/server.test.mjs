@@ -3,7 +3,20 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startServer } from '../server.mjs';
+import { buildChatCompletionsUrl, startServer } from '../server.mjs';
+
+assert.equal(
+  buildChatCompletionsUrl('https://api.openai.com', 'openai'),
+  'https://api.openai.com/v1/chat/completions',
+);
+assert.equal(
+  buildChatCompletionsUrl('https://api.openai.com/v1/chat/completions', 'openai'),
+  'https://api.openai.com/v1/chat/completions',
+);
+assert.equal(
+  buildChatCompletionsUrl('https://api.deepseek.com', 'deepseek'),
+  'https://api.deepseek.com/chat/completions',
+);
 
 const tempDir = await mkdtemp(join(tmpdir(), 'service-design-server-'));
 const server = await startServer({
