@@ -17,15 +17,34 @@ const fakeFetch = async (url, options = {}) => {
     const isChineseQuery = decodeURIComponent(String(url)).includes('服务设计');
     return new Response(
       JSON.stringify({
-        results: [{
+        results: isChineseQuery ? [{
           id: 'https://openalex.org/W1',
-          title: isChineseQuery ? '近年服务设计与用户体验研究' : 'Service design for hospital navigation',
+          title: '近年服务设计与用户体验研究',
           publication_year: 2024,
           cited_by_count: 12,
-          doi: isChineseQuery ? 'https://doi.org/10.1000/chinese' : 'https://doi.org/10.1000/example',
-          primary_location: { source: { display_name: isChineseQuery ? '包装工程' : 'Design Journal' } },
-          authorships: [{ author: { display_name: isChineseQuery ? '张研究' : 'A. Researcher' } }],
-        }],
+          doi: 'https://doi.org/10.1000/chinese',
+          primary_location: { source: { display_name: '包装工程' } },
+          authorships: [{ author: { display_name: '张研究' } }],
+        }] : [
+          {
+            id: 'https://openalex.org/W0',
+            title: 'Advanced catalyst design',
+            publication_year: 2024,
+            cited_by_count: 500,
+            doi: 'https://doi.org/10.1000/unrelated',
+            primary_location: { source: { display_name: 'Chemistry Journal' } },
+            authorships: [{ author: { display_name: 'C. Chemist' } }],
+          },
+          {
+            id: 'https://openalex.org/W2',
+            title: 'Service design for hospital navigation',
+            publication_year: 2024,
+            cited_by_count: 12,
+            doi: 'https://doi.org/10.1000/example',
+            primary_location: { source: { display_name: 'Design Journal' } },
+            authorships: [{ author: { display_name: 'A. Researcher' } }],
+          },
+        ],
       }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     );
@@ -141,6 +160,7 @@ try {
   });
   assert.equal(literature.ok, true);
   assert.ok(literature.items.length >= 2);
+  assert.ok(/service design|服务设计/i.test(literature.items[0].title), 'literature results should rank service-design relevance ahead of broad high-citation papers');
   assert.ok(literature.items.some((item) => item.source === 'OpenAlex'));
   assert.ok(literature.items.some((item) => item.source === 'Crossref'));
   assert.ok(literature.items.some((item) => /服务设计/.test(item.title)), 'literature search should include recent Chinese-oriented results');
