@@ -841,6 +841,8 @@ h3 {
 
 .model-result {
   min-height: 92px;
+  max-height: 68vh;
+  overflow: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: white;
@@ -849,6 +851,12 @@ h3 {
   font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+.model-result:has(.structured-output),
+.model-result:has(.generated-result),
+.model-result:has(.project-report) {
+  white-space: normal;
 }
 
 #literatureResult {
@@ -920,6 +928,116 @@ h3 {
 
 .literature-table.compact {
   min-width: 560px;
+}
+
+.structured-output,
+.generated-result,
+.project-report {
+  display: grid;
+  gap: 14px;
+  white-space: normal;
+}
+
+.structured-output > h3,
+.generated-result > h3,
+.project-report > h1 {
+  margin: 0;
+  color: var(--primary-dark);
+  line-height: 1.25;
+}
+
+.structured-section,
+.report-section {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(12, 96, 112, 0.12);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ffffff, #f8fcfc);
+}
+
+.structured-section h4,
+.generated-result h4,
+.data-table-block h4,
+.report-section h2 {
+  margin: 0;
+  color: var(--primary-dark);
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.structured-section p,
+.generated-result p,
+.report-section p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.75;
+}
+
+.data-table-block {
+  display: grid;
+  gap: 8px;
+}
+
+.data-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.data-table th,
+.data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: var(--primary-dark);
+  background: #edf8fa;
+  font-weight: 900;
+}
+
+.feedback-list {
+  display: grid;
+  gap: 10px;
+}
+
+.feedback-item {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid rgba(12, 96, 112, 0.13);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.feedback-item div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.feedback-item p,
+.feedback-item small {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.project-report {
+  padding: 4px;
+}
+
+.project-report h1 {
+  text-align: center;
+  font-size: 26px;
 }
 
 .assistant .advice-list {
