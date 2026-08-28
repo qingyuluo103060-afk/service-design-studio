@@ -26,6 +26,14 @@
   parseAhpMatrixCsv,
   parseTopsisMatrixCsv,
   parseCsvTable,
+  normalizeFeedbackEntries,
+  summarizeFeedbackEntries,
+  parseMarkdownTables,
+  normalizeGeneratedText,
+  buildStructuredResearchAnalysis,
+  buildStructuredThematicAnalysis,
+  buildStructuredGroundedTheoryAnalysis,
+  buildStructuredProjectReport,
   buildJourneyRows,
   buildTrizRows,
   rankByTopsis,
@@ -142,6 +150,16 @@ const els = {
   sankeyChart: document.querySelector('#sankeyChart'),
   studentInsights: document.querySelector('#studentInsights'),
   teacherInsights: document.querySelector('#teacherInsights'),
+  studentFeedbackType: document.querySelector('#studentFeedbackType'),
+  studentFeedbackContent: document.querySelector('#studentFeedbackContent'),
+  studentFeedbackSuggestion: document.querySelector('#studentFeedbackSuggestion'),
+  submitStudentFeedback: document.querySelector('#submitStudentFeedback'),
+  studentFeedbackList: document.querySelector('#studentFeedbackList'),
+  feedbackSummaryCount: document.querySelector('#feedbackSummaryCount'),
+  downloadStudentFeedback: document.querySelector('#downloadStudentFeedback'),
+  analyzeStudentFeedback: document.querySelector('#analyzeStudentFeedback'),
+  feedbackAnalysisResult: document.querySelector('#feedbackAnalysisResult'),
+  teacherFeedbackTable: document.querySelector('#teacherFeedbackTable'),
   assistantAdvice: document.querySelector('#assistantAdvice'),
   liveModuleTitle: document.querySelector('#liveModuleTitle'),
   liveCourseMap: document.querySelector('#liveCourseMap'),
@@ -476,6 +494,9 @@ function bindEvents() {
   els.runSmartScore?.addEventListener('click', runSmartScore);
   els.exportGradebook?.addEventListener('click', exportGradebook);
   els.gradingTable?.addEventListener('input', updateGradebookRecord);
+  els.submitStudentFeedback?.addEventListener('click', submitStudentFeedback);
+  els.downloadStudentFeedback?.addEventListener('click', downloadStudentFeedback);
+  els.analyzeStudentFeedback?.addEventListener('click', analyzeStudentFeedback);
   els.randomAssignRoles?.addEventListener('click', randomAssignRoles);
   els.clearGroupRoles?.addEventListener('click', clearGroupRoles);
   els.roleBoard?.addEventListener('input', updateGroupRole);
@@ -947,6 +968,7 @@ function render() {
   renderEvidence();
   renderNeeds();
   renderConcepts();
+  renderFeedbackModule();
   renderLight();
 }
 
@@ -2222,6 +2244,182 @@ function renderTeacherInsights() {
   `;
 }
 
+function renderFeedbackModule() {
+  state.feedbackEntries = normalizeFeedbackEntries(state.feedbackEntries || []);
+  renderStudentFeedbackList();
+  renderTeacherFeedbackTable();
+}
+
+function renderStudentFeedbackList() {
+  if (!els.studentFeedbackList) return;
+  const user = currentUser || {};
+  const group = activeGroup();
+  const entries = state.feedbackEntries.filter((entry) =>
+    entry.studentId === user.studentId || entry.groupName === group.name || activeRole === 'teacher',
+  ).slice(-6).reverse();
+  els.studentFeedbackList.innerHTML = entries.length
+    ? entries.map((entry) => `
+      <article class="feedback-item">
+        <div><b>${escapeHtml(entry.type)}</b><small>${escapeHtml(formatDate(entry.createdAt))}</small></div>
+        <p>${escapeHtml(entry.content)}</p>
+        ${entry.suggestion ? `<small>建议：${escapeHtml(entry.suggestion)}</small>` : ''}
+      </article>
+    `).join('')
+    : '<p class="muted">暂无反馈。学生可在这里提交使用问题、页面体验意见或功能建议。</p>';
+}
+
+function renderTeacherFeedbackTable() {
+  if (!els.teacherFeedbackTable) return;
+  const entries = normalizeFeedbackEntries(state.feedbackEntries || []);
+  if (els.feedbackSummaryCount) els.feedbackSummaryCount.textContent = `${entries.length} 条`;
+  els.teacherFeedbackTable.innerHTML = renderDataTable({
+    title: '学生反馈明细表',
+    headers: ['时间', '角色', '姓名', '学号/工号', '小组', '类型', '问题或意见', '建议改法'],
+    rows: entries.map((entry) => [
+      formatDate(entry.createdAt),
+      entry.role,
+      entry.name,
+      entry.studentId || entry.teacherId || '',
+      entry.groupName,
+      entry.type,
+      entry.content,
+      entry.suggestion,
+    ]),
+  });
+}
+
+function submitStudentFeedback() {
+  const content = els.studentFeedbackContent?.value?.trim() || '';
+  if (!content) {
+    window.alert('请先填写问题或意见。');
+    return;
+  }
+  const group = activeGroup();
+  const user = currentUser || {};
+  const entry = {
+    role: user.role || activeRole,
+    name: user.name || '未登录用户',
+    studentId: user.studentId || user.teacherId || '',
+    className: user.className || group.members[0]?.className || '',
+    groupName: group.name,
+    type: els.studentFeedbackType?.value || '使用问题',
+    content,
+    suggestion: els.studentFeedbackSuggestion?.value?.trim() || '',
+    createdAt: new Date().toISOString(),
+  };
+  state.feedbackEntries = normalizeFeedbackEntries([...(state.feedbackEntries || []), entry]);
+  els.studentFeedbackContent.value = '';
+  els.studentFeedbackSuggestion.value = '';
+  saveState();
+  renderFeedbackModule();
+}
+
+function downloadStudentFeedback() {
+  const rows = [
+    ['time', 'role', 'name', 'identity', 'class_name', 'group', 'type', 'content', 'suggestion'],
+    ...normalizeFeedbackEntries(state.feedbackEntries || []).map((entry) => [
+      formatDate(entry.createdAt),
+      entry.role,
+      entry.name,
+      entry.studentId || '',
+      entry.className,
+      entry.groupName,
+      entry.type,
+      entry.content,
+      entry.suggestion,
+    ]),
+  ];
+  downloadText('service-design-student-feedback.csv', `\ufeff${rowsToCsv(rows)}`, 'text/csv;charset=utf-8');
+}
+
+async function analyzeStudentFeedback() {
+  if (!els.feedbackAnalysisResult) return;
+  const entries = normalizeFeedbackEntries(state.feedbackEntries || []);
+  const summary = summarizeFeedbackEntries(entries);
+  els.feedbackAnalysisResult.innerHTML = renderFeedbackSummary(summary);
+  if (!entries.length) return;
+  try {
+    const aiText = await requestModelText([
+      '请作为服务设计智慧课程平台产品经理，根据学生使用反馈，汇总高频问题、体验痛点、功能缺口、优化升级需求和可执行迭代方案。',
+      '输出必须结构化，尽量使用短标题和表格，不要使用星号，不要编造学生未提出的问题。',
+      JSON.stringify(entries).slice(0, 7000),
+    ].join('\n\n'));
+    els.feedbackAnalysisResult.innerHTML += renderGeneratedResult(aiText, '大模型补充分析');
+  } catch (error) {
+    els.feedbackAnalysisResult.insertAdjacentHTML('beforeend', `<p class="muted">未能调用大模型，已保留本地汇总。原因：${escapeHtml(error.message)}</p>`);
+  }
+}
+
+function renderFeedbackSummary(summary) {
+  return renderStructuredOutput({
+    title: '学生反馈汇总分析',
+    sections: [
+      { title: '总体情况', body: `共收集 ${summary.total} 条学生使用意见。` },
+      { title: '高频关键词', body: summary.keywords.map((item) => `${item.word}（${item.count}）`).join('、') || '暂无稳定关键词。' },
+    ],
+    tables: [
+      { title: '反馈类型统计', headers: ['反馈类型', '数量'], rows: Object.entries(summary.byType) },
+      { title: '优化升级需求与方案', headers: ['优先级', '升级需求', '处理建议'], rows: summary.plan.map((item) => [String(item.priority), item.need, item.action]) },
+    ],
+  });
+}
+
+function renderStructuredOutput(output = {}) {
+  const sections = Array.isArray(output.sections) ? output.sections : [];
+  const tables = Array.isArray(output.tables) ? output.tables : [];
+  return `
+    <div class="structured-output">
+      ${output.title ? `<h3>${escapeHtml(output.title)}</h3>` : ''}
+      ${sections.map((section) => `
+        <section class="structured-section">
+          <h4>${escapeHtml(section.title || '分析结果')}</h4>
+          <p>${escapeHtml(section.body || '')}</p>
+          ${(section.tables || []).map(renderDataTable).join('')}
+        </section>
+      `).join('')}
+      ${tables.map(renderDataTable).join('')}
+    </div>
+  `;
+}
+
+function renderGeneratedResult(text = '', title = '智能分析结果') {
+  const tables = parseMarkdownTables(text);
+  const cleaned = normalizeGeneratedText(text)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !(tables.length && line.includes('|')));
+  return `
+    <div class="generated-result">
+      <h3>${escapeHtml(title)}</h3>
+      ${cleaned.map((line) => {
+        const plain = line.replace(/^\d+[.、]\s*/, '');
+        if (/[:：]$/.test(plain) || plain.length <= 18) return `<h4>${escapeHtml(plain.replace(/[:：]$/, ''))}</h4>`;
+        return `<p>${escapeHtml(plain)}</p>`;
+      }).join('')}
+      ${tables.map((table, index) => renderDataTable({ title: table.title || `表格 ${index + 1}`, headers: table.headers, rows: table.rows })).join('')}
+    </div>
+  `;
+}
+
+function renderDataTable(table = {}) {
+  const headers = Array.isArray(table.headers) ? table.headers : [];
+  const rows = Array.isArray(table.rows) ? table.rows : [];
+  if (!headers.length) return '';
+  return `
+    <div class="data-table-block">
+      ${table.title ? `<h4>${escapeHtml(table.title)}</h4>` : ''}
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${rows.length ? rows.map((row) => `<tr>${headers.map((_, index) => `<td>${escapeHtml(row[index] ?? '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${headers.length}">暂无数据</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
 function buildGradeRows() {
   state.gradebook = state.gradebook || {};
   return state.groups.map((group) => {
@@ -2397,19 +2595,29 @@ function renderLiveRail() {
 async function runResearchAnalysis() {
   const text = els.rawResearchData?.value?.trim() || '';
   const prompt = els.researchAnalysisPrompt?.value?.trim() || '请识别调研材料中的高频痛点、关键利益相关者、服务断点，并给出四象限坐标建议。';
-  const local = buildLocalAnalysis('researchQuadrant', activeProject(), text);
+  const project = activeProject();
+  const local = buildStructuredResearchAnalysis(text, project);
   if (!text) {
     els.researchAnalysisResult.textContent = '请先粘贴或上传调研原始数据。';
     return;
   }
   els.runResearchAnalysis.disabled = true;
-  els.researchAnalysisResult.textContent = '正在分析调研数据...';
+  els.researchAnalysisResult.innerHTML = '<p>正在分析调研数据...</p>';
   try {
-    const aiText = await requestModelText(`${prompt}\n\n原始调研材料：\n${text.slice(0, 5000)}`);
-    els.researchAnalysisResult.textContent = aiText || local;
+    project.researchAnalysis = local;
+    const aiText = await requestModelText([
+      prompt,
+      '请按“分析摘要、痛点证据表、服务断点、利益相关者冲突、四象限坐标建议表、后续调研建议”输出。表格可使用 Markdown 表格，但不要使用星号。',
+      `项目主题：${project.title}`,
+      `服务场景：${project.scenario}`,
+      `原始调研材料：\n${text.slice(0, 5000)}`,
+    ].join('\n\n'));
+    els.researchAnalysisResult.innerHTML = renderStructuredOutput(local) + renderGeneratedResult(aiText, '大模型补充分析');
   } catch (error) {
-    els.researchAnalysisResult.textContent = `${local}\n\n未能调用大模型，已使用本地启发式分析。原因：${error.message}`;
+    project.researchAnalysis = local;
+    els.researchAnalysisResult.innerHTML = `${renderStructuredOutput(local)}<p class="muted">未能调用大模型，已使用本地启发式分析。原因：${escapeHtml(error.message)}</p>`;
   } finally {
+    saveState();
     renderResearchQuadrant(buildQuadrantPoints(activeProject(), text));
     els.runResearchAnalysis.disabled = false;
   }
@@ -2424,14 +2632,22 @@ async function runInterviewCoding() {
     return;
   }
   const local = method === 'grounded'
-    ? buildGroundedTheoryAnalysis(text, prompt)
-    : buildThematicAnalysis(text, prompt);
+    ? buildStructuredGroundedTheoryAnalysis(text, prompt)
+    : buildStructuredThematicAnalysis(text, prompt);
   activeProject().codingAnalysis = { ...local, updatedAt: new Date().toISOString() };
   saveState();
   els.interviewCodingResult.innerHTML = renderCodingResult(local);
   try {
-    const aiText = await requestModelText(`${local.method}。请严格按照以下步骤复核并补充分析，不要跳步：${local.steps.join('、')}。\n研究问题：${prompt}\n访谈材料：\n${text.slice(0, 6000)}`);
-    els.interviewCodingResult.innerHTML += `<div class="model-result"><b>大模型复核结果</b>\n${escapeHtml(aiText)}</div>`;
+    const aiText = await requestModelText([
+      `${local.method}。请严格按照以下步骤复核并补充分析，不要跳步：${local.steps.join('、')}。`,
+      local.method === '主题分析'
+        ? '必须区分初始编码、子主题、主主题、证据摘录和设计启发。'
+        : '必须区分开放编码概念、初始范畴、主范畴、核心范畴、范畴关系和理论饱和提示。',
+      '可使用 Markdown 表格，但不要使用星号。',
+      `研究问题：${prompt}`,
+      `访谈材料：\n${text.slice(0, 6000)}`,
+    ].join('\n\n'));
+    els.interviewCodingResult.innerHTML += renderGeneratedResult(aiText, '大模型复核结果');
   } catch {
     // Keep deterministic local coding when no personal model is configured.
   }
@@ -2479,10 +2695,7 @@ function renderCodingResult(result) {
   return `
     <div class="coding-steps">${result.steps.map((step, index) => `<span>${index + 1}. ${escapeHtml(step)}</span>`).join('')}</div>
     <article class="coding-card"><h3>${escapeHtml(result.method)}研究问题</h3><p>${escapeHtml(result.question)}</p></article>
-    <div class="coding-grid">
-      <article class="coding-card"><h3>初始编码</h3>${result.codes.map((item) => `<p><b>${escapeHtml(item.code)}</b><small>${escapeHtml(item.evidence || '待回查原文')}</small></p>`).join('')}</article>
-      <article class="coding-card"><h3>主题 / 范畴</h3>${result.themes.map((item) => `<p><b>${escapeHtml(item.theme)}</b><small>${escapeHtml((item.codes || []).join('、'))}${item.relation ? `；${escapeHtml(item.relation)}` : ''}</small></p>`).join('')}</article>
-    </div>
+    ${renderStructuredOutput(result)}
     <article class="coding-card"><h3>方法备忘录</h3><p>${escapeHtml(result.memo)}</p></article>
   `;
 }
@@ -2765,68 +2978,54 @@ function exportGradebook() {
 function generateProjectReport() {
   const project = activeProject();
   const report = buildProjectReport(project);
-  els.projectReportPreview.textContent = report;
-  downloadText('service-design-project-report.doc', htmlDocumentFromText(report), 'application/msword;charset=utf-8');
+  els.projectReportPreview.innerHTML = renderProjectReportHtml(report);
+  downloadText('service-design-project-report.doc', htmlDocumentFromReport(report), 'application/msword;charset=utf-8');
 }
 
 function exportProjectPackage() {
   const project = activeProject();
   downloadText('service-design-project-data.json', JSON.stringify({ exportedAt: new Date().toISOString(), state, activeGroupId, project }, null, 2), 'application/json;charset=utf-8');
   downloadText('service-design-project-data.csv', projectToCsv(project), 'text/csv;charset=utf-8');
-  downloadText('service-design-project-report.doc', htmlDocumentFromText(buildProjectReport(project)), 'application/msword;charset=utf-8');
+  downloadText('service-design-project-report.doc', htmlDocumentFromReport(buildProjectReport(project)), 'application/msword;charset=utf-8');
   downloadText('service-design-project-excel.xls', htmlWorkbook(project), 'application/vnd.ms-excel;charset=utf-8');
 }
 
 function printProjectPdf() {
   const win = window.open('', '_blank');
   if (!win) return;
-  win.document.write(htmlDocumentFromText(buildProjectReport(activeProject())));
+  win.document.write(htmlDocumentFromReport(buildProjectReport(activeProject())));
   win.document.close();
   win.focus();
   win.print();
 }
 
 function buildProjectReport(project) {
-  const progress = calculateStageProgress(project);
-  const keywords = extractKeywords(`${project.title} ${project.scenario}`).slice(0, 8);
-  const ranked = rankedConcepts();
-  const methodPlan = buildMethodTaskPlan(project);
-  const methodSummary = summarizeMethodTaskProgress(methodPlan);
-  const methodLines = methodPlan.map((task, index) => `${index + 1}. ${task.phase}：${task.title}（${task.completed ? '已完成' : '待完善'}）`).join('\n');
-  const processAppendix = METHOD_PROCESS_TEMPLATES.map((template, index) => [
-    `${index + 1}. ${template.title}`,
-    `目的：${template.purpose}`,
-    `前置材料：${template.inputs.join('、')}`,
-    `过程步骤：${template.steps.join(' → ')}`,
-    `建议表格字段：${template.columns.join(' / ')}`,
-  ].join('\n')).join('\n\n');
-  return [
-    `《服务设计》课程项目报告`,
-    '',
-    `一、项目主题：${project.title}`,
-    `二、服务场景：${project.scenario}`,
-    `三、方法链完成情况：${methodSummary.completed}/${methodSummary.total}，完成度 ${methodSummary.percent}%。`,
-    methodLines,
-    '',
-    `四、文献推荐与研究空白：${project.literatureReview?.result || '待补充。建议先完成一键文献推荐，再提炼研究空白。'}`,
-    `五、调研方法与原始证据：共记录 ${STAGES.reduce((sum, stage) => sum + (project.stages[stage.id]?.evidence?.length || 0), 0)} 条过程证据。`,
-    `六、访谈/问卷分析：建议按主题分析或扎根理论呈现编码过程，并说明需求如何从原始材料中产生。`,
-    project.codingAnalysis ? `访谈分析过程：${project.codingAnalysis.method}；步骤：${project.codingAnalysis.steps.join(' → ')}；主题/范畴：${project.codingAnalysis.themes.map((item) => item.theme).join('、')}` : '',
-    `七、用户画像、利益相关者与用户旅程：围绕目标用户、陪伴者、一线服务、管理者和平台/设备建立关系图；旅程阶段包括 ${buildJourneyRows(project).map((row) => row.stage).join('、')}。`,
-    `八、需求筛选：已记录 ${project.needs.length} 条需求，应结合 Kano 分类和 AHP 权重解释优先级。${project.ahpAnalysis ? `当前 AHP CR=${project.ahpAnalysis.cr}，${project.ahpAnalysis.consistent ? '一致性通过' : '需修正矩阵'}。` : ''}`,
-    `九、TRIZ 方案生成：已记录 ${project.concepts.length} 个方案，TRIZ 矛盾表 ${buildTrizRows(project).length} 条，应说明服务矛盾、创新原理和需求证据链。`,
-    `十、TOPSIS 方案筛选与服务蓝图：当前优先方案为 ${ranked[0]?.title || '待补充'}，建议按用户行为、前台触点、后台支持、实体证据和失败点展开蓝图。${project.topsisAnalysis?.ranked?.length ? `TOPSIS 已输出 ${project.topsisAnalysis.ranked.length} 个方案贴近度。` : ''}`,
-    `十一、测试与评估：当前整体闭环进度 ${progress.overall}%，需结合 SERVQUAL/TOPSIS 说明验证结果。`,
-    `十二、关键词摘要：${keywords.map((item) => `${item.word}(${item.count})`).join('、') || '待补充'}`,
-    `十三、反思与迭代：说明本轮设计的局限、数据不足和下一轮改进计划。`,
-    '',
-    '附录：方法过程表格清单',
-    processAppendix,
-  ].join('\n');
+  return buildStructuredProjectReport(project);
 }
 
-function htmlDocumentFromText(text) {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>服务设计项目报告</title><style>body{font-family:Microsoft YaHei,Arial,sans-serif;line-height:1.8;padding:32px;color:#12252b;white-space:pre-wrap}</style></head><body>${escapeHtml(text)}</body></html>`;
+function renderProjectReportHtml(report) {
+  return `
+    <article class="project-report">
+      <h1>${escapeHtml(report.title)}</h1>
+      ${renderDataTable({ title: '报告基本信息', headers: ['项目', '内容'], rows: report.meta || [] })}
+      ${(report.sections || []).map((section, index) => `
+        <section class="report-section">
+          <h2>${index + 1}. ${escapeHtml(section.title)}</h2>
+          <p>${escapeHtml(section.body || '')}</p>
+          ${(section.tables || []).map(renderDataTable).join('')}
+        </section>
+      `).join('')}
+    </article>
+  `;
+}
+
+function htmlDocumentFromReport(report) {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>服务设计项目报告</title><style>
+    body{font-family:Microsoft YaHei,Arial,sans-serif;line-height:1.75;padding:36px;color:#12252b}
+    h1{font-size:26px;text-align:center;margin:0 0 24px} h2{font-size:19px;margin:24px 0 8px;color:#0f5666} h3,h4{margin:16px 0 8px;color:#0f5666}
+    table{width:100%;border-collapse:collapse;margin:10px 0 16px;font-size:13px} th,td{border:1px solid #cfe1e5;padding:8px 10px;text-align:left;vertical-align:top} th{background:#edf8fa}
+    p{margin:6px 0 12px}.report-section{page-break-inside:avoid}
+  </style></head><body>${renderProjectReportHtml(report)}</body></html>`;
 }
 
 function htmlWorkbook(project) {
@@ -3467,6 +3666,7 @@ function createSampleState() {
     studentText: sampleStudentsText,
     groups,
     gradebook: {},
+    feedbackEntries: [],
   };
 }
 
