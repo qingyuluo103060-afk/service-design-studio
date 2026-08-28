@@ -1776,9 +1776,23 @@ function downloadKanoSurvey() {
 async function analyzeKanoSurvey() {
   if (!els.kanoSurveyResult) return;
   const file = els.kanoSurveyFile?.files?.[0];
-  const fallback = activeProject().needs.map((need) => `${need.title}：${classifyKano(need.importance, need.satisfaction)}`);
+  const fallback = activeProject().needs.map((need) => [
+    need.title,
+    classifyKano(need.importance, need.satisfaction),
+    need.importance || '',
+    need.satisfaction || '',
+    '来自当前需求评分，建议上传真实 Kano 问卷后复核',
+  ]);
   if (!file) {
-    els.kanoSurveyResult.textContent = `未上传问卷数据，已根据当前需求评分生成分类建议：\n${fallback.join('\n')}`;
+    els.kanoSurveyResult.innerHTML = renderStructuredOutput({
+      title: 'Kano 需求分类建议',
+      sections: [
+        { title: '数据来源', body: '当前未上传回收问卷，系统先根据需求重要度与满意度生成课堂演示分类。正式分析请下载 Kano 问卷、回收数据后再上传。' },
+      ],
+      tables: [
+        { title: '需求分类预判表', headers: ['需求', 'Kano 类型', '重要度', '当前满意度', '说明'], rows: fallback },
+      ],
+    });
     return;
   }
   const text = await readUploadText(file);
@@ -1797,23 +1811,23 @@ async function analyzeKanoSurvey() {
     }))
     .filter((row) => row.need && row.functional && row.dysfunctional);
   if (!responses.length) {
-    els.kanoSurveyResult.textContent = '已读取文件，但未识别到 need/functional/dysfunctional 三列。建议上传包含“需求、正向答案、反向答案”的回收数据 CSV。';
+    els.kanoSurveyResult.innerHTML = renderGeneratedResult('已读取文件，但未识别到 need / functional / dysfunctional 三列。建议上传包含“需求、正向答案、反向答案”的回收数据 CSV。', 'Kano 问卷识别提示');
     return;
   }
   const analysis = analyzeKanoResponses(responses);
-  els.kanoSurveyResult.innerHTML = `
-    <b>已读取 ${responses.length} 份 Kano 正反向答案。</b>
-    <div class="method-table">
-      <span>需求</span><span>主导类型</span><span>Better</span><span>Worse</span><span>样本</span>
-      ${analysis.map((item) => `
-        <b>${escapeHtml(item.need)}</b>
-        <b>${escapeHtml(item.dominantCategory)}</b>
-        <span>${item.better}</span>
-        <span>${item.worse}</span>
-        <span>${item.total}</span>
-      `).join('')}
-    </div>
-  `;
+  els.kanoSurveyResult.innerHTML = renderStructuredOutput({
+    title: 'Kano 问卷分析结果',
+    sections: [
+      { title: '样本说明', body: `已读取 ${responses.length} 份 Kano 正反向答案。Better 表示需求满足后提升满意度的程度，Worse 表示需求不满足时造成不满意的程度。` },
+    ],
+    tables: [
+      {
+        title: 'Kano 属性计算与 Better-Worse 系数表',
+        headers: ['需求', '主导类型', 'Better 系数', 'Worse 系数', '有效样本'],
+        rows: analysis.map((item) => [item.need, item.dominantCategory, item.better, item.worse, item.total]),
+      },
+    ],
+  });
 }
 
 function downloadAhpTemplate() {
@@ -1836,7 +1850,7 @@ function analyzeAhpMatrix() {
   const parsed = parseAhpMatrixCsv(source);
   const validRows = parsed.matrix.filter((row) => row.length === parsed.labels.length);
   if (!parsed.labels.length || validRows.length !== parsed.labels.length) {
-    els.ahpMatrixResult.textContent = '矩阵格式不完整。请使用“下载 AHP 模板”生成 CSV，再按需求名称填写互反判断矩阵。';
+    els.ahpMatrixResult.innerHTML = renderGeneratedResult('矩阵格式不完整。请使用“下载 AHP 模板”生成 CSV，再按需求名称填写互反判断矩阵。', 'AHP 矩阵识别提示');
     return;
   }
   const analysis = calculateAhpConsistency(validRows);
@@ -1872,19 +1886,28 @@ function renderAhpMatrixResult(project) {
     const parsed = parseAhpMatrixCsv(buildAhpTemplateText(project));
     return { labels: parsed.labels, matrix: parsed.matrix, ...calculateAhpConsistency(parsed.matrix), note: '课堂演示矩阵，建议上传小组真实判断矩阵。' };
   })();
-  els.ahpMatrixResult.innerHTML = `
-    <b>AHP 权重与一致性检验</b>
-    <div class="method-table ahp-output-table">
-      <span>指标</span><span>权重</span><span>排序</span>
-      ${analysis.labels.map((label, index) => `
-        <b>${escapeHtml(label)}</b><span>${Math.round((analysis.weights[index] || 0) * 1000) / 10}%</span><span>${index + 1}</span>
-      `).join('')}
-    </div>
-    <div class="analysis-badges">
-      <span>λmax ${analysis.lambdaMax}</span><span>CI ${analysis.ci}</span><span>CR ${analysis.cr}</span><span>${analysis.consistent ? '一致性通过' : '需要修正矩阵'}</span>
-    </div>
-    ${analysis.note ? `<p class="muted">${escapeHtml(analysis.note)}</p>` : ''}
-  `;
+  const rankedWeights = analysis.labels
+    .map((label, index) => ({ label, weight: analysis.weights[index] || 0 }))
+    .sort((a, b) => b.weight - a.weight);
+  els.ahpMatrixResult.innerHTML = renderStructuredOutput({
+    title: 'AHP 权重与一致性检验',
+    sections: [
+      { title: '过程说明', body: analysis.note || '根据成对比较矩阵计算权重，并通过 λmax、CI、CR 检查判断矩阵一致性。' },
+      { title: '一致性结论', body: analysis.consistent ? 'CR 达到课堂可接受范围，可进入需求优先级排序或 TOPSIS 方案评价。' : 'CR 未通过，建议回到矩阵中检查极端判断，修正后重新计算。' },
+    ],
+    tables: [
+      {
+        title: 'AHP 权重排序表',
+        headers: ['排序', '指标', '权重'],
+        rows: rankedWeights.map((item, index) => [String(index + 1), item.label, `${Math.round(item.weight * 1000) / 10}%`]),
+      },
+      {
+        title: '一致性检验表',
+        headers: ['λmax', 'CI', 'CR', '判断'],
+        rows: [[analysis.lambdaMax, analysis.ci, analysis.cr, analysis.consistent ? '一致性通过' : '需要修正矩阵']],
+      },
+    ],
+  });
 }
 
 function downloadJourneyTemplate() {
@@ -1937,24 +1960,20 @@ async function analyzeJourney() {
       saveState();
       renderJourneyWorkspace(project);
     }
-    els.journeyTable.insertAdjacentHTML('beforeend', `<div class="model-result"><b>智能分析</b>\n${escapeHtml(json.analysis || '已根据模型返回结果更新旅程图。')}</div>`);
+    els.journeyTable.insertAdjacentHTML('beforeend', renderGeneratedResult(json.analysis || '已根据模型返回结果更新旅程图。', '智能旅程图分析'));
   } catch (error) {
-    els.journeyTable.insertAdjacentHTML('beforeend', `<div class="model-result"><b>本地结果已生成</b>\n模型结构化输出未完成：${escapeHtml(error.message)}。请检查 API Key，或继续使用当前旅程图。 </div>`);
+    els.journeyTable.insertAdjacentHTML('beforeend', renderGeneratedResult(`模型结构化输出未完成：${error.message}。请检查 API Key，或继续使用当前旅程图。`, '本地结果已生成'));
   }
 }
 
 function renderJourneyWorkspace(project) {
   if (!els.journeyMap || !els.journeyTable) return;
   const rows = buildJourneyRows(project);
-  els.journeyTable.innerHTML = `
-    <div class="method-table journey-output-table">
-      <span>阶段</span><span>触点</span><span>用户行为</span><span>情绪</span><span>痛点</span><span>机会点</span><span>证据</span>
-      ${rows.map((row) => `
-        <b>${escapeHtml(row.stage)}</b><span>${escapeHtml(row.touchpoint)}</span><span>${escapeHtml(row.action)}</span>
-        <span>${escapeHtml(row.emotion)}</span><span>${escapeHtml(row.pain)}</span><span>${escapeHtml(row.opportunity)}</span><span>${escapeHtml(row.evidence)}</span>
-      `).join('')}
-    </div>
-  `;
+  els.journeyTable.innerHTML = renderDataTable({
+    title: '用户旅程过程表',
+    headers: ['阶段', '触点', '用户行为', '情绪', '痛点', '机会点', '证据'],
+    rows: rows.map((row) => [row.stage, row.touchpoint, row.action, row.emotion, row.pain, row.opportunity, row.evidence]),
+  });
   els.journeyMap.innerHTML = `
     <div class="journey-line"></div>
     ${rows.map((row, index) => {
@@ -2031,24 +2050,20 @@ async function analyzeTriz() {
       renderConcepts();
       renderLight();
     }
-    els.trizResult.innerHTML = `<b>智能 TRIZ 分析</b>\n${escapeHtml(json.analysis || '已根据模型返回结果更新 TRIZ 工作表。')}`;
+    els.trizResult.innerHTML = renderGeneratedResult(json.analysis || '已根据模型返回结果更新 TRIZ 工作表。', '智能 TRIZ 分析');
   } catch (error) {
-    els.trizResult.textContent = `已根据关键需求生成 TRIZ 矛盾表和方案卡。模型结构化输出未完成：${error.message}`;
+    els.trizResult.innerHTML = renderGeneratedResult(`已根据关键需求生成 TRIZ 矛盾表和方案卡。模型结构化输出未完成：${error.message}`, '本地 TRIZ 结果');
   }
 }
 
 function renderTrizWorkspace(project) {
   if (!els.trizWorksheet) return;
   const rows = buildTrizRows(project);
-  els.trizWorksheet.innerHTML = `
-    <div class="method-table triz-output-table">
-      <span>关键需求</span><span>改善目标</span><span>恶化风险</span><span>TRIZ 原理</span><span>方案转译</span><span>证据</span>
-      ${rows.map((row) => `
-        <b>${escapeHtml(row.need)}</b><span>${escapeHtml(row.improve)}</span><span>${escapeHtml(row.worsen)}</span>
-        <span>${escapeHtml(row.principle)}</span><span>${escapeHtml(row.concept)}</span><span>${escapeHtml(row.evidence)}</span>
-      `).join('')}
-    </div>
-  `;
+  els.trizWorksheet.innerHTML = renderDataTable({
+    title: 'TRIZ 矛盾分析工作表',
+    headers: ['关键需求', '改善目标', '恶化风险', 'TRIZ 原理', '方案转译', '证据'],
+    rows: rows.map((row) => [row.need, row.improve, row.worsen, row.principle, row.concept, row.evidence]),
+  });
 }
 
 function downloadTopsisTemplate() {
@@ -2066,7 +2081,7 @@ async function analyzeTopsisMatrix() {
   const project = activeProject();
   const parsed = file ? parseTopsisMatrixCsv(await readUploadText(file)) : { items: project.concepts, criteria: topsisCriteria() };
   if (!parsed.items.length || !parsed.criteria.length) {
-    els.topsisMatrixResult.textContent = '未识别到方案评价矩阵。请上传包含“方案,创新性,可行性,服务质量,风险”的 CSV。';
+    els.topsisMatrixResult.innerHTML = renderGeneratedResult('未识别到方案评价矩阵。请上传包含“方案,创新性,可行性,服务质量,风险”的 CSV。', 'TOPSIS 矩阵识别提示');
     return;
   }
   const analysis = calculateTopsisAnalysis(parsed.items, parsed.criteria);
@@ -2080,19 +2095,25 @@ function renderTopsisMatrixResult(project) {
   if (!els.topsisMatrixResult) return;
   const analysis = project.topsisAnalysis || calculateTopsisAnalysis(project.concepts, topsisCriteria());
   if (!analysis.ranked?.length) {
-    els.topsisMatrixResult.textContent = '添加方案或上传 TOPSIS 矩阵后显示排序、理想解距离和贴近度。';
+    els.topsisMatrixResult.innerHTML = renderGeneratedResult('添加方案或上传 TOPSIS 矩阵后显示排序、理想解距离和贴近度。', 'TOPSIS 操作提示');
     return;
   }
-  els.topsisMatrixResult.innerHTML = `
-    <b>TOPSIS 过程结果</b>
-    <div class="method-table topsis-output-table">
-      <span>排名</span><span>方案</span><span>贴近度 C</span><span>D+</span><span>D-</span>
-      ${analysis.ranked.map((item, index) => `
-        <b>${index + 1}</b><b>${escapeHtml(item.title)}</b><span>${item.score}</span><span>${item.bestDistance}</span><span>${item.worstDistance}</span>
-      `).join('')}
-    </div>
-    <p class="muted">正理想解：${Object.entries(analysis.idealBest || {}).map(([key, value]) => `${key}=${Number(value).toFixed(3)}`).join('；')}；负理想解：${Object.entries(analysis.idealWorst || {}).map(([key, value]) => `${key}=${Number(value).toFixed(3)}`).join('；')}</p>
-  `;
+  els.topsisMatrixResult.innerHTML = renderStructuredOutput({
+    title: 'TOPSIS 过程结果',
+    sections: [
+      {
+        title: '理想解说明',
+        body: `正理想解：${Object.entries(analysis.idealBest || {}).map(([key, value]) => `${key}=${Number(value).toFixed(3)}`).join('；') || '暂无'}。负理想解：${Object.entries(analysis.idealWorst || {}).map(([key, value]) => `${key}=${Number(value).toFixed(3)}`).join('；') || '暂无'}。`,
+      },
+    ],
+    tables: [
+      {
+        title: 'TOPSIS 排序与距离表',
+        headers: ['排名', '方案', '贴近度 C', 'D+', 'D-'],
+        rows: analysis.ranked.map((item, index) => [String(index + 1), item.title, item.score, item.bestDistance, item.worstDistance]),
+      },
+    ],
+  });
 }
 
 async function explainMethodResultWithAi(method) {
@@ -2106,20 +2127,20 @@ async function explainMethodResultWithAi(method) {
     })()
     : project.topsisAnalysis || calculateTopsisAnalysis(project.concepts, topsisCriteria());
   if (!target) return;
-  target.insertAdjacentHTML('beforeend', '<div class="model-result"><b>AI 解释</b>\n正在结合课程方法解释计算结果...</div>');
-  const resultBox = target.querySelector('.model-result:last-child');
+  target.insertAdjacentHTML('beforeend', renderGeneratedResult('正在结合课程方法解释计算结果...', 'AI 解释'));
+  const resultBox = target.querySelector('.generated-result:last-child');
   try {
     const aiText = await requestModelText(
       isAhp
         ? `请解释以下 AHP 判断矩阵结果，必须说明权重、λmax、CI、CR、一致性是否通过、如果 CR 不通过如何修正，以及如何进入 Kano/AHP 需求优先级报告。\n${JSON.stringify(payload)}`
         : `请解释以下 TOPSIS 方案排序结果，必须说明评价指标、正负理想解、D+、D-、贴近度 C、优先方案依据，以及如何转入服务蓝图和测试评估。\n${JSON.stringify(payload)}`,
     );
-    resultBox.innerHTML = `<b>AI 解释</b>\n${escapeHtml(aiText)}`;
+    resultBox.outerHTML = renderGeneratedResult(aiText, 'AI 解释');
   } catch (error) {
     const local = isAhp
       ? `AHP 本地解释：CR=${payload.cr}，${payload.consistent ? '一致性通过，可作为权重进入需求优先级或 TOPSIS。' : '一致性未通过，建议回到成对比较矩阵重新调整极端判断。'}`
       : `TOPSIS 本地解释：当前优先方案为 ${payload.ranked?.[0]?.title || '待补充'}，贴近度越高越接近正理想解，应结合调研证据和服务蓝图再判断。`;
-    resultBox.innerHTML = `<b>AI 解释</b>\n${escapeHtml(`${local}\n模型未连接：${error.message}`)}`;
+    resultBox.outerHTML = renderGeneratedResult(`${local}\n模型未连接：${error.message}`, 'AI 解释');
   }
 }
 
@@ -2713,11 +2734,11 @@ async function openSmartAnalysis(vizId) {
   const local = buildLocalAnalysis(vizId, activeProject(), els.rawResearchData?.value || '');
   els.vizModalTitle.textContent = `${title} · 智能分析`;
   els.vizModalBody.dataset.vizId = vizId;
-  els.vizModalBody.innerHTML = `<div class="model-result">${escapeHtml(local)}</div>`;
+  els.vizModalBody.innerHTML = renderGeneratedResult(local, '本地智能分析');
   els.vizModal.hidden = false;
   try {
     const aiText = await requestModelText(`请作为服务设计课程助教，对当前可视化「${title}」进行课堂分析，指出结论、风险和下一步行动。\n\n项目数据：\n${JSON.stringify(activeProject()).slice(0, 6000)}`);
-    els.vizModalBody.innerHTML = `<div class="model-result">${escapeHtml(aiText)}</div>`;
+    els.vizModalBody.innerHTML = renderGeneratedResult(aiText, '大模型智能分析');
   } catch {
     // The local analysis above remains visible when no personal API key is configured.
   }
@@ -2738,13 +2759,13 @@ async function runStageAiAssistant(moduleId = activeModuleId) {
   ].join('\n');
   els.vizModalTitle.textContent = `${module.title} · 本阶段 AI 助教`;
   els.vizModalBody.dataset.vizId = `stage-${moduleId}`;
-  els.vizModalBody.innerHTML = `<div class="model-result">${escapeHtml(`${localPrompt}\n\n未连接模型时，可先按以上清单推进。`)}</div>`;
+  els.vizModalBody.innerHTML = renderGeneratedResult(`${localPrompt}\n\n未连接模型时，可先按以上清单推进。`, '本阶段 AI 助教');
   els.vizModal.hidden = false;
   try {
     const aiText = await requestModelText(localPrompt);
-    els.vizModalBody.innerHTML = `<div class="model-result">${escapeHtml(aiText)}</div>`;
+    els.vizModalBody.innerHTML = renderGeneratedResult(aiText, '本阶段 AI 助教');
   } catch (error) {
-    els.vizModalBody.innerHTML = `<div class="model-result">${escapeHtml(`${localPrompt}\n\n模型未连接：${error.message}\n请到“AI 模型设置”测试个人 API Key。`)}</div>`;
+    els.vizModalBody.innerHTML = renderGeneratedResult(`${localPrompt}\n\n模型未连接：${error.message}\n请到“AI 模型设置”测试个人 API Key。`, '本阶段 AI 助教');
   }
 }
 
