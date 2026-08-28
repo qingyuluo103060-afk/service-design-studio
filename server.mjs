@@ -457,7 +457,7 @@ async function searchLiterature(payload, fetchImpl) {
     ok: true,
     query,
     sources: ['OpenAlex', 'Crossref', 'OpenAlex 近年中文取向', 'Crossref 近年中文取向'],
-    items: dedupeLiterature(items).slice(0, limit * 2),
+    items: rankLiterature(dedupeLiterature(items), query).slice(0, limit * 2),
   };
 }
 
@@ -516,7 +516,41 @@ function dedupeLiterature(items) {
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).sort((a, b) => (b.citedBy || 0) - (a.citedBy || 0));
+  });
+}
+
+function rankLiterature(items, query) {
+  return [...items].sort((a, b) => {
+    const scoreDelta = literatureRelevanceScore(b, query) - literatureRelevanceScore(a, query);
+    if (scoreDelta) return scoreDelta;
+    const yearDelta = (Number(b.year) || 0) - (Number(a.year) || 0);
+    if (yearDelta) return yearDelta;
+    return (b.citedBy || 0) - (a.citedBy || 0);
+  });
+}
+
+function literatureRelevanceScore(item, query) {
+  const haystack = `${item.title || ''} ${item.venue || ''} ${item.abstract || ''}`.toLowerCase();
+  const rawTerms = [
+    ...String(query || '').toLowerCase().split(/[\s,，;；、]+/),
+    '服务设计',
+    '用户体验',
+    '服务蓝图',
+    'kano',
+    'ahp',
+    'triz',
+    'topsis',
+    'service design',
+    'user experience',
+    'service blueprint',
+    'hospital navigation',
+  ];
+  const stopWords = new Set(['design', 'service', 'user', 'study', 'research', 'the', 'and', 'for']);
+  const terms = [...new Set(rawTerms.map((term) => term.trim()).filter((term) => term.length >= 2 && !stopWords.has(term)))];
+  const matchScore = terms.reduce((sum, term) => sum + (haystack.includes(term) ? term.length : 0), 0);
+  const chineseTitleBonus = /[\u4e00-\u9fa5]/.test(item.title || '') ? 8 : 0;
+  const recentBonus = Number(item.year) >= 2021 ? 4 : 0;
+  return matchScore + chineseTitleBonus + recentBonus;
 }
 
 function normalizeDoi(value) {
