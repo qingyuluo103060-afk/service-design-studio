@@ -270,6 +270,15 @@ export const COURSE_MODULES = [
     roles: ['student', 'teacher'],
   },
   {
+    id: 'feedback',
+    group: '测试评估',
+    icon: '议',
+    title: '使用反馈',
+    description: '学生提交使用问题和优化建议，教师汇总分析平台升级需求。',
+    stageId: 'prototype',
+    roles: ['student', 'teacher'],
+  },
+  {
     id: 'ai-settings',
     group: '智能协同',
     icon: 'AI',
@@ -581,6 +590,49 @@ export function parseCsvTable(text = '') {
   return { headers: rows[0].map((cell) => String(cell).trim()), rows: rows.slice(1) };
 }
 
+export function parseMarkdownTables(text = '') {
+  const lines = String(text || '').split(/\r?\n/);
+  const tables = [];
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const headerLine = lines[index].trim();
+    const dividerLine = lines[index + 1].trim();
+    if (!isMarkdownTableLine(headerLine) || !/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/.test(dividerLine)) continue;
+    const headers = splitMarkdownTableLine(headerLine);
+    const rows = [];
+    index += 2;
+    while (index < lines.length && isMarkdownTableLine(lines[index])) {
+      rows.push(splitMarkdownTableLine(lines[index]));
+      index += 1;
+    }
+    index -= 1;
+    tables.push({ headers, rows });
+  }
+  return tables;
+}
+
+export function normalizeGeneratedText(text = '') {
+  return String(text || '')
+    .replace(/\*\*/g, '')
+    .replace(/^\s*[*-]\s+/gm, '')
+    .replace(/\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function isMarkdownTableLine(line = '') {
+  const trimmed = String(line || '').trim();
+  return trimmed.includes('|') && trimmed.split('|').filter((cell) => cell.trim()).length >= 2;
+}
+
+function splitMarkdownTableLine(line = '') {
+  return String(line || '')
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim());
+}
+
 export function parseAhpMatrixCsv(text = '') {
   const table = parseCsvTable(text);
   if (!table.rows.length) return { labels: [], matrix: [] };
@@ -643,6 +695,174 @@ export function buildTrizRows(project = {}) {
     concept: `${principles[index % principles.length]}：围绕“${need.title}”重构触点`,
     evidence: '来自 Kano/AHP 关键需求',
   }));
+}
+
+export function normalizeFeedbackEntries(entries = []) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry, index) => ({
+      id: String(entry.id || `fb-${Date.now()}-${index}`),
+      role: String(entry.role || 'student'),
+      name: String(entry.name || '').trim(),
+      studentId: String(entry.studentId || '').trim(),
+      className: String(entry.className || '').trim(),
+      groupName: String(entry.groupName || '').trim(),
+      type: String(entry.type || '使用问题').trim(),
+      content: String(entry.content || '').trim(),
+      suggestion: String(entry.suggestion || '').trim(),
+      createdAt: entry.createdAt || new Date().toISOString(),
+    }))
+    .filter((entry) => entry.content);
+}
+
+export function summarizeFeedbackEntries(entries = []) {
+  const feedback = normalizeFeedbackEntries(entries);
+  const byType = {};
+  feedback.forEach((entry) => {
+    byType[entry.type] = (byType[entry.type] || 0) + 1;
+  });
+  const corpus = feedback.map((entry) => `${entry.type} ${entry.content} ${entry.suggestion}`).join(' ');
+  const keywords = extractKeywords(corpus).slice(0, 10);
+  const upgradeNeeds = [];
+  if (/表格|显示|遮挡|看不全|层次|格式/.test(corpus)) upgradeNeeds.push('优化表格渲染、长内容滚动、全屏查看和报告版式。');
+  if (/模型|API|连接|失败|大模型/.test(corpus)) upgradeNeeds.push('完善模型连接状态、错误提示和阶段化提示词。');
+  if (/上传|文件|乱码|word|pdf|excel|图片/.test(corpus)) upgradeNeeds.push('继续增强多格式文件识别、OCR 和上传后的文本校验。');
+  if (/流程|步骤|方法|不会|不懂/.test(corpus)) upgradeNeeds.push('把服务设计流程工程化为逐步任务、方法说明和完成标记。');
+  if (!upgradeNeeds.length) upgradeNeeds.push('根据高频反馈继续优化课堂操作引导和界面信息密度。');
+  return {
+    total: feedback.length,
+    byType,
+    keywords,
+    upgradeNeeds,
+    plan: upgradeNeeds.map((need, index) => ({
+      priority: index + 1,
+      need,
+      action: index === 0 ? '纳入下一版优先修复' : '进入后续迭代池',
+    })),
+  };
+}
+
+export function buildStructuredResearchAnalysis(text = '', project = {}) {
+  const units = splitQualitativeUnitsCore(text);
+  const keywords = extractKeywords(text).slice(0, 8);
+  const painRows = keywords.slice(0, 6).map((item, index) => [
+    item.word,
+    String(item.count),
+    units[index % Math.max(1, units.length)] || '待回查原始材料',
+    index < 2 ? '优先突破' : index < 4 ? '继续观察' : '后续验证',
+  ]);
+  const quadrantRows = painRows.map((row, index) => [
+    row[0],
+    String(Math.min(5, 5 - (index % 3))),
+    String(Math.max(1, 2 + (index % 4))),
+    row[3],
+  ]);
+  return {
+    title: '调研原始数据智能分析',
+    sections: [
+      { title: '分析摘要', body: `围绕“${project.title || '当前项目'}”提取 ${units.length} 条原始语义单元，形成痛点、服务断点和四象限建议。` },
+      { title: '高频问题', body: keywords.map((item) => `${item.word}（${item.count}）`).join('、') || '暂未识别到稳定关键词。' },
+      { title: '服务断点', body: '重点核查用户在入口、等待、信息理解、人员协同和反馈闭环中的体验落差。' },
+      { title: '利益相关者冲突', body: '将目标用户、陪伴者、一线服务者、管理者和平台设备分别核对其目标、资源约束与责任边界。' },
+      { title: '后续调研建议', body: '继续补充访谈原话、观察记录和问卷数据，并把结论转入用户画像、Kano 问卷和 AHP 权重判断。' },
+    ],
+    tables: [
+      { title: '痛点证据表', headers: ['问题点', '频次', '证据摘录', '处理建议'], rows: painRows },
+      { title: '四象限坐标建议表', headers: ['问题点', '影响度X', '紧迫度Y', '象限'], rows: quadrantRows },
+    ],
+  };
+}
+
+export function buildStructuredThematicAnalysis(text = '', researchQuestion = '') {
+  const units = splitQualitativeUnitsCore(text);
+  const keywords = extractKeywords(text).slice(0, 10);
+  const rows = keywords.map((item, index) => {
+    const quote = units[index % Math.max(1, units.length)] || '待回查原文';
+    const subTheme = index % 3 === 0 ? '信息理解' : index % 3 === 1 ? '流程体验' : '协同支持';
+    const mainTheme = index % 3 === 0 ? '认知负荷与信息断点' : index % 3 === 1 ? '服务触点与等待体验' : '角色协同与情绪压力';
+    return [quote, item.word, subTheme, mainTheme, quote, `将“${item.word}”转化为需求语句或触点优化机会`];
+  });
+  return {
+    method: '主题分析',
+    question: researchQuestion || '围绕用户体验、服务触点和需求机会进行主题分析。',
+    steps: ['熟悉资料', '初始编码', '主题归并', '主题复核', '主题命名', '结果报告'],
+    sections: [
+      { title: '方法说明', body: '主题分析强调从资料熟悉出发，逐步形成编码、子主题、主主题，并回到原始语句复核主题边界。' },
+      { title: '结果解释', body: '主题名称应能概括一组相近体验问题，不能只用高频词直接替代分析。' },
+    ],
+    tables: [
+      { title: '主题分析编码表', headers: ['原始语句', '初始编码', '子主题', '主主题', '证据摘录', '设计启发'], rows },
+    ],
+    codes: rows.map((row) => ({ code: row[1], evidence: row[4], count: 1 })),
+    themes: [...new Set(rows.map((row) => row[3]))].map((theme) => ({ theme, codes: rows.filter((row) => row[3] === theme).map((row) => row[1]) })),
+    memo: '建议至少两名成员复核编码一致性，并将主题结果转入用户画像、Kano 需求与服务蓝图。',
+  };
+}
+
+export function buildStructuredGroundedTheoryAnalysis(text = '', researchQuestion = '') {
+  const units = splitQualitativeUnitsCore(text);
+  const keywords = extractKeywords(text).slice(0, 10);
+  const rows = keywords.map((item, index) => {
+    const quote = units[index % Math.max(1, units.length)] || '待回查原文';
+    const category = index % 3 === 0 ? '用户情境' : index % 3 === 1 ? '服务断点' : '支持资源';
+    const mainCategory = index % 3 === 0 ? '情境约束' : index % 3 === 1 ? '流程失配' : '协同机制';
+    const coreCategory = '服务信息协同不足导致体验断点累积';
+    return [quote, item.word, category, mainCategory, coreCategory, `${category}影响${mainCategory}`, `围绕“${item.word}”构建可验证的服务改进假设`];
+  });
+  return {
+    method: '扎根理论',
+    question: researchQuestion || '从访谈资料中归纳服务问题、核心范畴和设计机会。',
+    steps: ['开放编码', '持续比较', '主轴编码', '选择编码', '范畴关系', '理论饱和提示'],
+    sections: [
+      { title: '方法说明', body: '扎根理论强调从原始资料中生成概念，再归并范畴、建立范畴关系，并形成核心范畴。' },
+      { title: '饱和提示', body: '当前结果为课堂辅助编码，正式研究应继续补充样本，直到新资料不再产生实质性新范畴。' },
+    ],
+    tables: [
+      { title: '扎根理论编码表', headers: ['原始资料', '概念', '初始范畴', '主范畴', '核心范畴', '关系说明', '服务设计启发'], rows },
+    ],
+    codes: rows.map((row) => ({ code: row[1], evidence: row[0], count: 1 })),
+    themes: [...new Set(rows.map((row) => row[3]))].map((theme) => ({ theme, codes: rows.filter((row) => row[3] === theme).map((row) => row[1]), relation: rows.find((row) => row[3] === theme)?.[5] || '' })),
+    memo: '建议保留开放编码、主轴编码和选择编码的过程表，避免只呈现最终核心范畴。',
+  };
+}
+
+export function buildStructuredProjectReport(project = {}) {
+  const progress = calculateStageProgress(project);
+  const methodPlan = buildMethodTaskPlan(project);
+  const methodSummary = summarizeMethodTaskProgress(methodPlan);
+  const evidenceCount = STAGES.reduce((sum, stage) => sum + (project.stages?.[stage.id]?.evidence?.length || 0), 0);
+  const needs = Array.isArray(project.needs) ? project.needs : [];
+  const concepts = Array.isArray(project.concepts) ? project.concepts : [];
+  const codingTables = Array.isArray(project.codingAnalysis?.tables) ? project.codingAnalysis.tables : [];
+  return {
+    title: '《服务设计》课程项目报告',
+    meta: [
+      ['项目主题', project.title || '未命名服务设计项目'],
+      ['服务场景', project.scenario || '待补充'],
+      ['方法链完成度', `${methodSummary.completed}/${methodSummary.total}，${methodSummary.percent}%`],
+      ['过程证据数量', String(evidenceCount)],
+    ],
+    sections: [
+      { title: '摘要', body: `本项目围绕“${project.title || '服务设计项目'}”开展服务设计流程训练，当前总体闭环进度为 ${progress.overall}%。` },
+      { title: '选题背景与服务场景', body: project.scenario || '待补充服务对象、场景边界和初始问题。' },
+      { title: '文献推荐与研究空白', body: normalizeGeneratedText(project.literatureReview?.result || '待完成一键文献推荐。') },
+      { title: '调研设计与原始证据', body: `已记录 ${evidenceCount} 条过程证据。建议说明调研对象、方法、样本和材料来源。` },
+      { title: '访谈分析过程', body: project.codingAnalysis ? `${project.codingAnalysis.method}：${project.codingAnalysis.steps?.join(' → ') || ''}` : '待完成主题分析或扎根理论编码。', tables: codingTables },
+      { title: '用户画像、利益相关者与用户旅程', body: '报告应调用用户画像、利益相关者地图和用户旅程图说明目标用户、协同者、服务触点和情绪变化。', tables: [{ title: '用户旅程过程表', headers: ['阶段', '触点', '行为', '情绪', '痛点', '机会点', '证据'], rows: buildJourneyRows(project).map((row) => [row.stage, row.touchpoint, row.action, String(row.emotion), row.pain, row.opportunity, row.evidence]) }] },
+      { title: 'Kano-AHP 需求分析', body: `已记录 ${needs.length} 条需求。应说明需求来源、Kano 分类、AHP 判断矩阵和权重。`, tables: [{ title: '需求分析表', headers: ['需求', '重要度', '满意度'], rows: needs.map((need) => [need.title, String(need.importance), String(need.satisfaction)]) }] },
+      { title: 'TRIZ 方案生成', body: `已记录 ${concepts.length} 个方案。应说明服务矛盾、发明原理和方案证据链。`, tables: [{ title: 'TRIZ 工作表', headers: ['关键需求', '改善参数', '恶化参数', 'TRIZ 原理', '方案转译', '证据'], rows: buildTrizRows(project).map((row) => [row.need, row.improve, row.worsen, row.principle, row.concept, row.evidence]) }] },
+      { title: 'TOPSIS 方案筛选与服务蓝图', body: '应呈现方案评价矩阵、归一化结果、权重、贴近度排序，并把优选方案转化为服务蓝图。' },
+      { title: '测试评估与迭代', body: `当前测试反馈 ${project.feedback?.length || 0} 条。建议结合 SERVQUAL 维度说明验证结果。` },
+      { title: '结论与反思', body: '说明本轮设计的有效性、数据局限、课堂协作情况和下一轮迭代计划。' },
+    ],
+  };
+}
+
+function splitQualitativeUnitsCore(text = '') {
+  return String(text || '')
+    .split(/[。！？!?;\n\r]+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 4)
+    .slice(0, 60);
 }
 
 function parseCsvLineCore(line) {
@@ -808,6 +1028,7 @@ export function validateClassroomState(input) {
             },
           ]))
         : {},
+      feedbackEntries: normalizeFeedbackEntries(input.feedbackEntries || []),
     },
   };
 }
@@ -992,6 +1213,7 @@ function normalizeProject(project = {}) {
     : [];
   normalized.ahpAnalysis = project.ahpAnalysis || null;
   normalized.topsisAnalysis = project.topsisAnalysis || null;
+  normalized.researchAnalysis = project.researchAnalysis || null;
   normalized.codingAnalysis = project.codingAnalysis || null;
   normalized.taskStatus = project.taskStatus && typeof project.taskStatus === 'object'
     ? Object.fromEntries(Object.entries(project.taskStatus).map(([key, value]) => [
