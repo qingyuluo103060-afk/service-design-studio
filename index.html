@@ -7,7 +7,7 @@
     <title>服务设计智慧工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f5666'/%3E%3Cpath d='M16 18h32v7H16zm0 12h24v7H16zm0 12h32v7H16z' fill='white'/%3E%3C/svg%3E" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260827-docs-lit-v16" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260828-feedback-v17" />
   </head>
   <body>
     <section id="authGate" class="auth-gate" hidden>
@@ -318,6 +318,45 @@
             <section class="panel"><div class="panel-title"><div><p class="eyebrow">Evaluation</p><h2>测试与评估</h2></div><span class="status-chip">SERVQUAL × TOPSIS</span></div><div id="studentInsights" class="insight-grid"></div></section>
           </section>
 
+          <section id="module-feedback" class="workspace-module">
+            <section class="panel feedback-panel">
+              <div class="panel-title">
+                <div><p class="eyebrow">Student Voice</p><h2>使用问题与意见反馈</h2></div>
+                <span class="status-chip">问题收集 · 体验改进</span>
+              </div>
+              <div class="form-grid">
+                <label>反馈类型
+                  <select id="studentFeedbackType">
+                    <option value="界面显示">界面显示</option>
+                    <option value="流程理解">流程理解</option>
+                    <option value="模型调用">模型调用</option>
+                    <option value="文件上传">文件上传</option>
+                    <option value="功能建议">功能建议</option>
+                    <option value="其他问题">其他问题</option>
+                  </select>
+                </label>
+                <label>问题或意见<textarea id="studentFeedbackContent" rows="5" placeholder="请描述你在哪个模块遇到什么问题，或希望平台增加什么功能。"></textarea></label>
+                <label>建议改法<textarea id="studentFeedbackSuggestion" rows="5" placeholder="可选：你希望如何优化页面、流程、提示词或功能。"></textarea></label>
+              </div>
+              <div class="data-actions">
+                <button id="submitStudentFeedback" type="button">提交反馈</button>
+              </div>
+              <div id="studentFeedbackList" class="feedback-list"></div>
+            </section>
+            <section class="panel feedback-panel teacher-only">
+              <div class="panel-title">
+                <div><p class="eyebrow">Feedback Analytics</p><h2>学生使用意见汇总与升级方案</h2></div>
+                <span id="feedbackSummaryCount" class="status-chip">0 条</span>
+              </div>
+              <div class="data-actions">
+                <button id="downloadStudentFeedback" class="ghost" type="button">下载学生意见 CSV</button>
+                <button id="analyzeStudentFeedback" type="button">一键智能汇总分析</button>
+              </div>
+              <div id="feedbackAnalysisResult" class="model-result">教师可下载全部反馈，或调用个人大模型汇总高频问题、优化需求和升级方案。</div>
+              <div id="teacherFeedbackTable" class="method-table-wrap"></div>
+            </section>
+          </section>
+
           <section id="module-ai-settings" class="workspace-module">
             <section class="panel sticky-panel">
               <div class="panel-title"><div><p class="eyebrow">AI Coach</p><h2>AI 方法助手</h2></div></div>
@@ -450,6 +489,6 @@
     <script defer src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-    <script type="module" src="./src/app.js?v=20260827-docs-lit-v16"></script>
+    <script type="module" src="./src/app.js?v=20260828-feedback-v17"></script>
   </body>
 </html>
