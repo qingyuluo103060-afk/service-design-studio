@@ -441,11 +441,12 @@ async function searchLiterature(payload, fetchImpl) {
   const encoded = encodeURIComponent(query.slice(0, 240));
   const chineseQuery = buildChineseLiteratureQuery(query);
   const encodedChinese = encodeURIComponent(chineseQuery.slice(0, 240));
+  const recentLimit = Math.min(20, limit * 3);
   const [openAlex, crossref, chineseOpenAlex, chineseCrossref] = await Promise.allSettled([
     fetchOpenAlexWorks(fetchImpl, encoded, limit),
     fetchCrossrefWorks(fetchImpl, encoded, limit),
-    fetchOpenAlexWorks(fetchImpl, encodedChinese, limit, { recent: true }),
-    fetchCrossrefWorks(fetchImpl, encodedChinese, limit, { recent: true }),
+    fetchOpenAlexWorks(fetchImpl, encodedChinese, recentLimit, { recent: true }),
+    fetchCrossrefWorks(fetchImpl, encodedChinese, recentLimit, { recent: true }),
   ]);
   const items = [
     ...(openAlex.status === 'fulfilled' ? openAlex.value : []),
@@ -463,8 +464,9 @@ async function searchLiterature(payload, fetchImpl) {
 
 function buildChineseLiteratureQuery(query) {
   const base = String(query || '').trim();
-  const chineseTerms = '服务设计 用户体验 设计研究 Kano AHP TRIZ TOPSIS 需求分析';
-  return `${base} ${chineseTerms}`.trim();
+  const sceneTerms = (base.match(/医院|医疗|导诊|养老|社区|校园|图书馆|文旅|交通|餐饮|政务|零售|公共服务/g) || []).join(' ');
+  const methodTerms = '服务设计 用户体验 设计研究 服务蓝图 Kano AHP TRIZ TOPSIS 需求分析';
+  return `${sceneTerms} ${methodTerms}`.trim();
 }
 
 async function fetchOpenAlexWorks(fetchImpl, encodedQuery, limit, options = {}) {
@@ -544,13 +546,14 @@ function literatureRelevanceScore(item, query) {
     'user experience',
     'service blueprint',
     'hospital navigation',
+    'medical service',
+    'public service',
   ];
   const stopWords = new Set(['design', 'service', 'user', 'study', 'research', 'the', 'and', 'for']);
   const terms = [...new Set(rawTerms.map((term) => term.trim()).filter((term) => term.length >= 2 && !stopWords.has(term)))];
   const matchScore = terms.reduce((sum, term) => sum + (haystack.includes(term) ? term.length : 0), 0);
   const chineseTitleBonus = /[\u4e00-\u9fa5]/.test(item.title || '') ? 8 : 0;
-  const recentBonus = Number(item.year) >= 2021 ? 4 : 0;
-  return matchScore + chineseTitleBonus + recentBonus;
+  return matchScore + chineseTitleBonus;
 }
 
 function normalizeDoi(value) {
