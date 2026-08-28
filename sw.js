@@ -1,4 +1,4 @@
-const CACHE_NAME = 'service-design-studio-v26-docs-lit-v16';
+const CACHE_NAME = 'service-design-studio-v27-feedback-v17';
 const ASSETS = [
   './',
   './index.html',
