@@ -25,6 +25,14 @@ import {
   parseAhpMatrixCsv,
   parseTopsisMatrixCsv,
   parseCsvTable,
+  normalizeFeedbackEntries,
+  summarizeFeedbackEntries,
+  parseMarkdownTables,
+  normalizeGeneratedText,
+  buildStructuredResearchAnalysis,
+  buildStructuredThematicAnalysis,
+  buildStructuredGroundedTheoryAnalysis,
+  buildStructuredProjectReport,
   buildJourneyRows,
   buildTrizRows,
   rankByTopsis,
@@ -169,6 +177,12 @@ const parsedCsv = parseCsvTable('name,value\n"候诊,提醒",5');
 assert.deepEqual(parsedCsv.headers, ['name', 'value']);
 assert.equal(parsedCsv.rows[0][0], '候诊,提醒');
 
+const markdownTables = parseMarkdownTables('| 中文关键词 | English keywords | 用途 |\n| --- | --- | --- |\n| 医院导诊 | hospital navigation | 核心检索 |');
+assert.equal(markdownTables.length, 1);
+assert.deepEqual(markdownTables[0].headers, ['中文关键词', 'English keywords', '用途']);
+assert.equal(markdownTables[0].rows[0][0], '医院导诊');
+assert.equal(normalizeGeneratedText('**标题**\n* 要点\n|A|B|').includes('*'), false);
+
 const parsedAhp = parseAhpMatrixCsv('需求,候诊提醒,导诊清晰\n候诊提醒,1,3\n导诊清晰,0.333,1');
 assert.deepEqual(parsedAhp.labels, ['候诊提醒', '导诊清晰']);
 assert.equal(parsedAhp.matrix[0][1], 3);
@@ -269,6 +283,50 @@ assert.equal(validState.value.groups[0].roles.s1, '用户访谈');
 assert.equal(validState.value.groups[0].project.journey[0].stage, '进入服务');
 assert.equal(validState.value.groups[0].project.triz[0].principle, '分割');
 assert.equal(validateClassroomState({ groups: [] }).ok, false);
+
+const feedbackEntries = normalizeFeedbackEntries([
+  { role: 'student', name: '陈一', groupName: '第1组', type: '界面显示', content: '表格显示不全，报告没有层次。' },
+  { role: 'student', name: '林二', groupName: '第2组', type: '模型调用', content: '模型连接偶尔失败，希望提示更清楚。' },
+]);
+assert.equal(feedbackEntries.length, 2);
+assert.ok(feedbackEntries[0].id && feedbackEntries[0].createdAt);
+const feedbackSummary = summarizeFeedbackEntries(feedbackEntries);
+assert.equal(feedbackSummary.total, 2);
+assert.equal(feedbackSummary.byType['界面显示'], 1);
+assert.ok(feedbackSummary.upgradeNeeds.some((item) => item.includes('表格')));
+
+const structuredResearch = buildStructuredResearchAnalysis('导诊员说患者等待焦虑，家属不知道下一步去哪里。患者说入口提示不清楚。', {
+  title: '医院导诊服务优化',
+  scenario: '医院门诊导诊',
+});
+assert.ok(structuredResearch.sections.length >= 5);
+assert.ok(structuredResearch.tables.some((table) => table.title.includes('四象限')));
+
+const thematic = buildStructuredThematicAnalysis('患者说入口提示不清楚。家属说等待时不知道下一步。导诊员说解释压力很大。', '分析导诊体验');
+assert.equal(thematic.method, '主题分析');
+assert.deepEqual(thematic.steps.slice(0, 2), ['熟悉资料', '初始编码']);
+assert.ok(thematic.tables.some((table) => table.title === '主题分析编码表'));
+assert.ok(thematic.tables[0].headers.includes('主主题'));
+
+const grounded = buildStructuredGroundedTheoryAnalysis('患者不知道去哪里。家属需要同步信息。导诊员需要重复解释。', '分析服务断点');
+assert.equal(grounded.method, '扎根理论');
+assert.deepEqual(grounded.steps.slice(0, 3), ['开放编码', '持续比较', '主轴编码']);
+assert.ok(grounded.tables.some((table) => table.title === '扎根理论编码表'));
+assert.ok(grounded.tables[0].headers.includes('核心范畴'));
+
+const structuredReport = buildStructuredProjectReport({
+  title: '医院导诊服务优化',
+  scenario: '医院门诊',
+  stages: project.stages,
+  needs: [{ title: '候诊提醒', importance: 5, satisfaction: 2 }],
+  concepts: [{ title: '候诊屏', novelty: 3, feasibility: 5, serviceQuality: 4, risk: 1 }],
+  feedback: [],
+  codingAnalysis: thematic,
+  literatureReview: { result: '已有研究关注医疗服务体验。', items: [] },
+});
+assert.equal(structuredReport.title, '《服务设计》课程项目报告');
+assert.ok(structuredReport.sections.some((section) => section.title.includes('访谈分析')));
+assert.ok(structuredReport.sections.some((section) => section.tables?.length));
 
 const methodPlan = buildMethodTaskPlan({
   title: '医院导诊服务优化',
