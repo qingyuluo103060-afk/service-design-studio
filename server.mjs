@@ -469,7 +469,8 @@ function buildChineseLiteratureQuery(query) {
 
 async function fetchOpenAlexWorks(fetchImpl, encodedQuery, limit, options = {}) {
   const recentFilter = options.recent ? '&filter=from_publication_date:2021-01-01' : '';
-  const response = await fetchImpl(`https://api.openalex.org/works?search=${encodedQuery}&per-page=${limit}&sort=cited_by_count:desc${recentFilter}`, {
+  const sort = options.recent ? '' : '&sort=cited_by_count:desc';
+  const response = await fetchImpl(`https://api.openalex.org/works?search=${encodedQuery}&per-page=${limit}${sort}${recentFilter}`, {
     headers: { accept: 'application/json' },
   });
   const data = await response.json().catch(() => ({}));
@@ -489,7 +490,8 @@ async function fetchOpenAlexWorks(fetchImpl, encodedQuery, limit, options = {}) 
 
 async function fetchCrossrefWorks(fetchImpl, encodedQuery, limit, options = {}) {
   const recentFilter = options.recent ? '&filter=from-pub-date:2021-01-01' : '';
-  const response = await fetchImpl(`https://api.crossref.org/works?query.bibliographic=${encodedQuery}&rows=${limit}&sort=is-referenced-by-count&order=desc${recentFilter}`, {
+  const sort = options.recent ? '' : '&sort=is-referenced-by-count&order=desc';
+  const response = await fetchImpl(`https://api.crossref.org/works?query.bibliographic=${encodedQuery}&rows=${limit}${sort}${recentFilter}`, {
     headers: { accept: 'application/json' },
   });
   const data = await response.json().catch(() => ({}));
