@@ -4,7 +4,7 @@
   --surface: #ffffff;
   --surface-soft: #f7fbfb;
   --text: #12252b;
-  --muted: #667a82;
+  --muted: #566b73;
   --line: #d8e4e7;
   --primary: #0f5666;
   --primary-2: #16758a;
@@ -33,6 +33,7 @@ body {
     radial-gradient(circle at top left, rgba(22, 117, 138, 0.14), transparent 34rem),
     linear-gradient(180deg, #f8fbfb 0%, var(--bg) 36rem);
   color: var(--text);
+  font-size: 14px;
 }
 
 button,
@@ -62,7 +63,7 @@ button.ghost {
 }
 
 button:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.68;
 }
 
@@ -113,6 +114,25 @@ h2 {
 h3 {
   margin-bottom: 10px;
   font-size: 15px;
+}
+
+.heuristic-warning {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(188, 122, 42, 0.28);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #fff8e8, #fff2df);
+  color: #7a4a11;
+}
+
+.heuristic-warning b {
+  font-size: 14px;
+}
+
+.heuristic-warning span {
+  line-height: 1.65;
 }
 
 .app-shell {
