@@ -453,11 +453,15 @@ export function calculateStageProgress(project) {
 }
 
 export function classifyKano(importance, satisfaction) {
+  return classifyImportanceSatisfaction(importance, satisfaction);
+}
+
+export function classifyImportanceSatisfaction(importance, satisfaction) {
   const imp = Number(importance);
   const sat = Number(satisfaction);
-  if (imp >= 4 && sat <= 2) return '魅力型需求';
-  if (imp >= 4 && sat <= 4) return '期望型需求';
-  if (imp >= 4 && sat > 4) return '基本型需求';
+  if (imp >= 4 && sat <= 2) return '高优先改进';
+  if (imp >= 4 && sat <= 4) return '重点优化';
+  if (imp >= 4 && sat > 4) return '保持优势';
   if (imp <= 2 && sat >= 4) return '低优先级需求';
   if (imp <= 2 && sat <= 2) return '观察型需求';
   return '可优化需求';
@@ -474,8 +478,17 @@ export function calculateAhpWeights(matrix) {
 }
 
 export function calculateAhpConsistency(matrix) {
+  if (!Array.isArray(matrix) || matrix.length === 0) {
+    return { weights: [], lambdaMax: 0, ci: 0, cr: 0, consistent: false, error: 'AHP 矩阵为空。' };
+  }
+  const n = matrix.length;
+  if (n > 9) {
+    return { weights: [], lambdaMax: 0, ci: 0, cr: 0, consistent: false, error: 'AHP 课堂判断矩阵阶数需 ≤9，请合并或筛选指标后再计算。' };
+  }
+  if (!matrix.every((row) => Array.isArray(row) && row.length === n && row.every((value) => Number.isFinite(Number(value)) && Number(value) > 0))) {
+    return { weights: [], lambdaMax: 0, ci: 0, cr: 0, consistent: false, error: 'AHP 矩阵必须为正数方阵，不能包含空值、0 或非数字。' };
+  }
   const weights = calculateAhpWeights(matrix);
-  const n = weights.length;
   if (!n) return { weights: [], lambdaMax: 0, ci: 0, cr: 0, consistent: false };
   const weightedSums = matrix.map((row) =>
     row.reduce((sum, value, index) => sum + (Number(value) || 0) * weights[index], 0),
@@ -518,14 +531,21 @@ export function analyzeKanoResponses(responses = []) {
     bucket.counts[category] += 1;
     bucket.total += 1;
   });
+  const validCategories = ['魅力型需求', '期望型需求', '基本型需求', '无差异需求'];
+  const priority = ['基本型需求', '期望型需求', '魅力型需求', '无差异需求', '反向需求', '可疑结果'];
   return [...buckets.values()].map((bucket) => {
-    const entries = Object.entries(bucket.counts).sort((a, b) => b[1] - a[1]);
+    const validTotal = validCategories.reduce((sum, category) => sum + bucket.counts[category], 0);
+    const entries = Object.entries(bucket.counts).sort((a, b) => {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return priority.indexOf(a[0]) - priority.indexOf(b[0]);
+    });
     const dominantCategory = entries[0]?.[0] || '无差异需求';
     return {
       ...bucket,
+      validTotal,
       dominantCategory,
-      better: Number((((bucket.counts.魅力型需求 + bucket.counts.期望型需求) / (bucket.total || 1))).toFixed(4)),
-      worse: Number((-((bucket.counts.基本型需求 + bucket.counts.期望型需求) / (bucket.total || 1))).toFixed(4)),
+      better: Number((((bucket.counts.魅力型需求 + bucket.counts.期望型需求) / (validTotal || 1))).toFixed(4)),
+      worse: Number((-((bucket.counts.基本型需求 + bucket.counts.期望型需求) / (validTotal || 1))).toFixed(4)),
     };
   });
 }
@@ -635,10 +655,37 @@ function splitMarkdownTableLine(line = '') {
 
 export function parseAhpMatrixCsv(text = '') {
   const table = parseCsvTable(text);
-  if (!table.rows.length) return { labels: [], matrix: [] };
+  if (!table.rows.length) return { labels: [], matrix: [], errors: ['AHP 矩阵为空。'], warnings: [] };
   const labels = table.headers.slice(1);
-  const matrix = table.rows.map((row) => row.slice(1, labels.length + 1).map((cell) => Number(cell) || 0));
-  return { labels, matrix };
+  const errors = [];
+  const warnings = [];
+  const matrix = table.rows.map((row, rowIndex) => row.slice(1, labels.length + 1).map((cell, colIndex) => {
+    const raw = String(cell ?? '').trim();
+    const value = Number(raw);
+    if (!raw || !Number.isFinite(value) || value <= 0) {
+      errors.push(`第 ${rowIndex + 2} 行第 ${colIndex + 2} 列为非数字或非正数。`);
+      return Number.NaN;
+    }
+    return value;
+  }));
+  if (matrix.length !== labels.length || matrix.some((row) => row.length !== labels.length)) {
+    errors.push('AHP 判断矩阵必须为方阵，行列指标数量需要一致。');
+  }
+  if (labels.length > 9) {
+    errors.push('AHP 课堂判断矩阵阶数需 ≤9，请合并或筛选指标后再计算。');
+  }
+  matrix.forEach((row, rowIndex) => {
+    row.forEach((value, colIndex) => {
+      if (rowIndex === colIndex && Number.isFinite(value) && Math.abs(value - 1) > 0.001) {
+        warnings.push(`第 ${rowIndex + 1} 个指标自比较应为 1。`);
+      }
+      const reciprocal = matrix[colIndex]?.[rowIndex];
+      if (rowIndex < colIndex && Number.isFinite(value) && Number.isFinite(reciprocal) && Math.abs(value * reciprocal - 1) > 0.08) {
+        warnings.push(`“${labels[rowIndex]}”与“${labels[colIndex]}”的互反关系偏差较大。`);
+      }
+    });
+  });
+  return { labels, matrix, errors, warnings };
 }
 
 export function parseTopsisMatrixCsv(text = '') {
@@ -1124,9 +1171,9 @@ function evaluateKanoPair(functional, dysfunctional) {
     },
     must: {
       like: '反向需求',
-      must: '无差异需求',
-      neutral: '无差异需求',
-      tolerate: '无差异需求',
+      must: '基本型需求',
+      neutral: '基本型需求',
+      tolerate: '基本型需求',
       dislike: '基本型需求',
     },
     neutral: {
