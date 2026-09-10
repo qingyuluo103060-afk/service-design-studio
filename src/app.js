@@ -5,7 +5,7 @@
   calculateAhpConsistency,
   calculateCompetencyProfile,
   calculateStageProgress,
-  classifyKano,
+  classifyImportanceSatisfaction,
   COURSE_MODULES,
   METHOD_TASK_CHAIN,
   METHOD_PROCESS_TEMPLATES,
@@ -299,18 +299,22 @@ function bindEvents() {
   els.buildGroups.addEventListener('click', () => {
     const students = parseStudentText(els.studentList.value);
     state.studentText = els.studentList.value;
+    const previousGroups = state.groups;
     state.groups = createGroups(students, Number(els.groupSize.value));
+    preserveGroupProjects(state.groups, previousGroups);
     seedProjects(state.groups);
-    activeGroupId = state.groups[0]?.id || activeGroupId;
+    activeGroupId = preferredActiveGroupId() || state.groups[0]?.id || activeGroupId;
     saveState();
     render();
   });
   els.randomBuildGroups?.addEventListener('click', () => {
     const students = parseStudentText(els.studentList.value);
     state.studentText = els.studentList.value;
+    const previousGroups = state.groups;
     state.groups = createRandomGroups(students, Number(els.groupSize.value));
+    preserveGroupProjects(state.groups, previousGroups);
     seedProjects(state.groups);
-    activeGroupId = state.groups[0]?.id || activeGroupId;
+    activeGroupId = preferredActiveGroupId() || state.groups[0]?.id || activeGroupId;
     saveState();
     render();
   });
@@ -327,6 +331,10 @@ function bindEvents() {
   els.groupList.addEventListener('click', (event) => {
     const button = event.target.closest('[data-group-id]');
     if (!button) return;
+    if (currentUser?.role === 'student' && button.dataset.groupId !== preferredActiveGroupId()) {
+      window.alert('学生账号只能查看和编辑自己所在小组。');
+      return;
+    }
     activeGroupId = button.dataset.groupId;
     render();
   });
@@ -1101,6 +1109,7 @@ async function loadCurrentUser() {
 function applyRolePermissions() {
   if (currentUser?.role === 'student') {
     activeRole = 'student';
+    activeGroupId = preferredActiveGroupId() || activeGroupId;
   }
   els.roleButtons.forEach((button) => {
     const locked = currentUser?.role === 'student' && button.dataset.role === 'teacher';
@@ -1159,7 +1168,8 @@ function renderGroups() {
   els.groupList.innerHTML = state.groups.map((group) => {
     const active = group.id === activeGroupId ? ' active' : '';
     const progress = calculateStageProgress(group.project);
-    return `<button class="group-button${active}" data-group-id="${group.id}">
+    const locked = currentUser?.role === 'student' && group.id !== preferredActiveGroupId();
+    return `<button class="group-button${active}${locked ? ' locked' : ''}" data-group-id="${group.id}"${locked ? ' disabled title="学生账号只能进入自己所在小组"' : ''}>
       <span>
         <strong>${group.name}</strong>
         <small>${group.members.map((member) => member.name).join('、')}</small>
@@ -1537,12 +1547,12 @@ function renderEvidence() {
 function renderNeeds() {
   const needs = activeProject().needs;
   els.needList.innerHTML = needs.map((need, index) => {
-    const kano = classifyKano(need.importance, need.satisfaction);
+    const ipa = classifyImportanceSatisfaction(need.importance, need.satisfaction);
     const priority = Math.round((Number(need.importance) * (6 - Number(need.satisfaction))) / 25 * 100);
     return `<article class="list-item">
       <div class="list-item-header">
         <input data-need-index="${index}" data-key="title" value="${escapeHtml(need.title)}" />
-        <span class="pill">${kano}</span>
+        <span class="pill" title="重要度-满意度初筛，不等同于真实 Kano 问卷分类">${ipa}</span>
       </div>
       ${renderMiniBar('优先级', priority)}
       <div class="metric-row two">
@@ -1778,7 +1788,7 @@ async function analyzeKanoSurvey() {
   const file = els.kanoSurveyFile?.files?.[0];
   const fallback = activeProject().needs.map((need) => [
     need.title,
-    classifyKano(need.importance, need.satisfaction),
+    classifyImportanceSatisfaction(need.importance, need.satisfaction),
     need.importance || '',
     need.satisfaction || '',
     '来自当前需求评分，建议上传真实 Kano 问卷后复核',
@@ -1787,10 +1797,10 @@ async function analyzeKanoSurvey() {
     els.kanoSurveyResult.innerHTML = renderStructuredOutput({
       title: 'Kano 需求分类建议',
       sections: [
-        { title: '数据来源', body: '当前未上传回收问卷，系统先根据需求重要度与满意度生成课堂演示分类。正式分析请下载 Kano 问卷、回收数据后再上传。' },
+        { title: '数据来源', body: '当前未上传回收问卷，系统先根据需求重要度与满意度生成“初筛建议”，这不等同于真实 Kano 分类。正式分析请下载 Kano 问卷、回收数据后再上传。' },
       ],
       tables: [
-        { title: '需求分类预判表', headers: ['需求', 'Kano 类型', '重要度', '当前满意度', '说明'], rows: fallback },
+        { title: '重要度-满意度初筛表', headers: ['需求', '初筛标签', '重要度', '当前满意度', '说明'], rows: fallback },
       ],
     });
     return;
@@ -1849,15 +1859,23 @@ function analyzeAhpMatrix() {
   const source = els.ahpMatrixText?.value?.trim() || buildAhpTemplateText(project);
   const parsed = parseAhpMatrixCsv(source);
   const validRows = parsed.matrix.filter((row) => row.length === parsed.labels.length);
-  if (!parsed.labels.length || validRows.length !== parsed.labels.length) {
-    els.ahpMatrixResult.innerHTML = renderGeneratedResult('矩阵格式不完整。请使用“下载 AHP 模板”生成 CSV，再按需求名称填写互反判断矩阵。', 'AHP 矩阵识别提示');
+  if (!parsed.labels.length || validRows.length !== parsed.labels.length || parsed.errors?.length) {
+    els.ahpMatrixResult.innerHTML = renderGeneratedResult(
+      `矩阵格式不完整或存在无效数值。请使用“下载 AHP 模板”生成 CSV，再按需求名称填写互反判断矩阵。\n${(parsed.errors || []).join('\n')}`,
+      'AHP 矩阵识别提示',
+    );
     return;
   }
   const analysis = calculateAhpConsistency(validRows);
+  if (analysis.error) {
+    els.ahpMatrixResult.innerHTML = renderGeneratedResult(analysis.error, 'AHP 计算提示');
+    return;
+  }
   project.ahpAnalysis = {
     labels: parsed.labels,
     matrix: validRows,
     note: els.ahpNote?.value?.trim() || '',
+    warnings: parsed.warnings || [],
     ...analysis,
     updatedAt: new Date().toISOString(),
   };
@@ -1894,6 +1912,7 @@ function renderAhpMatrixResult(project) {
     sections: [
       { title: '过程说明', body: analysis.note || '根据成对比较矩阵计算权重，并通过 λmax、CI、CR 检查判断矩阵一致性。' },
       { title: '一致性结论', body: analysis.consistent ? 'CR 达到课堂可接受范围，可进入需求优先级排序或 TOPSIS 方案评价。' : 'CR 未通过，建议回到矩阵中检查极端判断，修正后重新计算。' },
+      ...(analysis.warnings?.length ? [{ title: '矩阵互反提示', body: analysis.warnings.join('；') }] : []),
     ],
     tables: [
       {
@@ -2422,6 +2441,15 @@ function renderGeneratedResult(text = '', title = '智能分析结果') {
   `;
 }
 
+function renderHeuristicNotice(message = '当前为演示输出，需接入个人大模型或补充真实数据后再作为正式分析依据。') {
+  return `<div class="heuristic-warning"><b>演示输出 · 非正式分析</b><span>${escapeHtml(message)}</span></div>`;
+}
+
+function hasPersonalModelKey() {
+  const provider = modelSettings.provider;
+  return Boolean(modelSettings.providers?.[provider]?.apiKey);
+}
+
 function renderDataTable(table = {}) {
   const headers = Array.isArray(table.headers) ? table.headers : [];
   const rows = Array.isArray(table.rows) ? table.rows : [];
@@ -2636,7 +2664,7 @@ async function runResearchAnalysis() {
     els.researchAnalysisResult.innerHTML = renderStructuredOutput(local) + renderGeneratedResult(aiText, '大模型补充分析');
   } catch (error) {
     project.researchAnalysis = local;
-    els.researchAnalysisResult.innerHTML = `${renderStructuredOutput(local)}<p class="muted">未能调用大模型，已使用本地启发式分析。原因：${escapeHtml(error.message)}</p>`;
+    els.researchAnalysisResult.innerHTML = `${renderHeuristicNotice(`未能调用大模型，以下为课堂演示输出，不可直接作为正式调研结论。原因：${error.message}`)}${renderStructuredOutput(local)}`;
   } finally {
     saveState();
     renderResearchQuadrant(buildQuadrantPoints(activeProject(), text));
@@ -2657,7 +2685,7 @@ async function runInterviewCoding() {
     : buildStructuredThematicAnalysis(text, prompt);
   activeProject().codingAnalysis = { ...local, updatedAt: new Date().toISOString() };
   saveState();
-  els.interviewCodingResult.innerHTML = renderCodingResult(local);
+  els.interviewCodingResult.innerHTML = `${hasPersonalModelKey() ? '' : renderHeuristicNotice('当前未配置个人 API Key，以下编码表为演示输出，仅用于理解方法步骤。')}${renderCodingResult(local)}`;
   try {
     const aiText = await requestModelText([
       `${local.method}。请严格按照以下步骤复核并补充分析，不要跳步：${local.steps.join('、')}。`,
@@ -2669,8 +2697,8 @@ async function runInterviewCoding() {
       `访谈材料：\n${text.slice(0, 6000)}`,
     ].join('\n\n'));
     els.interviewCodingResult.innerHTML += renderGeneratedResult(aiText, '大模型复核结果');
-  } catch {
-    // Keep deterministic local coding when no personal model is configured.
+  } catch (error) {
+    els.interviewCodingResult.insertAdjacentHTML('afterbegin', renderHeuristicNotice(`大模型复核未完成：${error.message}。请将下方结果视为方法演示。`));
   }
 }
 
@@ -2740,7 +2768,7 @@ async function openSmartAnalysis(vizId) {
     const aiText = await requestModelText(`请作为服务设计课程助教，对当前可视化「${title}」进行课堂分析，指出结论、风险和下一步行动。\n\n项目数据：\n${JSON.stringify(activeProject()).slice(0, 6000)}`);
     els.vizModalBody.innerHTML = renderGeneratedResult(aiText, '大模型智能分析');
   } catch {
-    // The local analysis above remains visible when no personal API key is configured.
+    els.vizModalBody.insertAdjacentHTML('afterbegin', renderHeuristicNotice('未连接个人大模型，当前弹窗保留的是本地演示分析。'));
   }
 }
 
@@ -2899,7 +2927,9 @@ async function requestModelText(prompt) {
   const provider = modelSettings.provider;
   const providerSettings = modelSettings.providers?.[provider] || {};
   if (!providerSettings.apiKey) throw new Error('未配置个人 API Key');
-  const response = await apiFetch('./api/llm/chat', {
+  let response;
+  try {
+    response = await apiFetch('./api/llm/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -2910,12 +2940,16 @@ async function requestModelText(prompt) {
       prompt,
       context: buildCurrentModelContext(),
     }),
-  });
+    }, 60000);
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('大模型响应超过 60 秒，已自动停止。请缩短输入材料或稍后重试。');
+    throw error;
+  }
   if (response.status === 401) {
     handleModelAuthExpired();
     throw new Error('课堂登录已失效，请重新登录后再调用大模型');
   }
-  if (!response.ok) throw new Error(`接口返回 ${response.status}`);
+  if (!response.ok) throw new Error(`接口返回 ${response.status}。请检查 API Key、模型名称、余额或服务商接口地址。`);
   const data = await response.json();
   if (data.ok === false) throw new Error(data.error || '模型未返回有效结果');
   return data.content || data.text || data.message || '';
@@ -3344,9 +3378,11 @@ async function importRosterFile() {
     const rosterText = validRows.map((student) => [student.id, student.name, student.className].filter(Boolean).join(' ')).join('\n');
     els.studentList.value = rosterText;
     state.studentText = rosterText;
+    const previousGroups = state.groups;
     state.groups = createGroups(parseStudentText(rosterText), Number(els.groupSize.value));
+    preserveGroupProjects(state.groups, previousGroups);
     seedProjects(state.groups);
-    activeGroupId = state.groups[0]?.id || activeGroupId;
+    activeGroupId = preferredActiveGroupId() || state.groups[0]?.id || activeGroupId;
     saveState();
     render();
     if (els.rosterStatus) {
@@ -3389,7 +3425,10 @@ function parseCsvLine(line) {
 }
 
 function downloadText(filename, content, type) {
-  downloadBlob(filename, new Blob([content], { type }));
+  const body = /(^text\/csv|csv)/i.test(type || '') && !String(content).startsWith('\ufeff')
+    ? `\ufeff${content}`
+    : content;
+  downloadBlob(filename, new Blob([body], { type }));
 }
 
 function downloadBlob(filename, blob) {
@@ -3526,6 +3565,13 @@ function activeGroup() {
   return state.groups.find((group) => group.id === activeGroupId) || state.groups[0];
 }
 
+function preferredActiveGroupId() {
+  if (currentUser?.role !== 'student') return '';
+  return state.groups.find((group) =>
+    (group.members || []).some((member) => String(member.id || member.studentId || '') === String(currentUser.studentId || '')),
+  )?.id || '';
+}
+
 function activeProject() {
   return activeGroup().project;
 }
@@ -3553,7 +3599,7 @@ async function loadBackendState() {
     if (!result.ok) return;
     backendAvailable = true;
     state = result.value;
-    activeGroupId = state.groups[0]?.id || activeGroupId;
+    activeGroupId = preferredActiveGroupId() || state.groups[0]?.id || activeGroupId;
     activeStageId = 'empathy';
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     els.studentList.value = state.studentText;
@@ -3585,7 +3631,7 @@ async function persistBackendState() {
   if (!response.ok) throw new Error('backend save failed');
 }
 
-function apiFetch(url, options = {}) {
+function apiFetch(url, options = {}, timeoutMs = 0) {
   const headers = new Headers(options.headers || {});
   if (sessionToken) {
     headers.set('authorization', `Bearer ${sessionToken}`);
@@ -3593,7 +3639,11 @@ function apiFetch(url, options = {}) {
   if (accessCode) {
     headers.set('x-access-code', accessCode);
   }
-  return fetch(url, { ...options, headers });
+  if (!timeoutMs) return fetch(url, { ...options, headers });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, headers, signal: controller.signal })
+    .finally(() => clearTimeout(timer));
 }
 
 function loadState() {
@@ -3694,6 +3744,13 @@ function createSampleState() {
 function seedProjects(groups) {
   groups.forEach((group, index) => {
     if (!group.project) return;
+    const projectHasStudentWork = group.project.title !== '未命名服务设计项目'
+      || group.project.scenario !== '请描述真实服务场景、目标用户与初步问题。'
+      || STAGES.some((stage) => (group.project.stages?.[stage.id]?.evidence || []).length)
+      || (group.project.needs || []).length
+      || (group.project.concepts || []).length
+      || (group.project.feedback || []).length;
+    if (projectHasStudentWork) return;
     group.project.title = index === 0 ? '医院无忧导诊服务优化' : '校园共享学习空间服务优化';
     group.project.scenario = index === 0
       ? '围绕老年患者、陪诊家属、导诊员和医生之间的信息传递断点，优化从入院咨询到候诊就医的服务体验。'
@@ -3727,6 +3784,18 @@ function seedProjects(groups) {
       { title: '候诊信息可视化屏', novelty: 3, feasibility: 5, serviceQuality: 4, risk: 1 },
       { title: '陪诊小程序提醒', novelty: 4, feasibility: 3, serviceQuality: 4, risk: 3 },
     ];
+  });
+}
+
+function preserveGroupProjects(nextGroups, previousGroups = []) {
+  nextGroups.forEach((group) => {
+    const previous = previousGroups.find((item) => item.id === group.id)
+      || previousGroups.find((item) => (item.members || []).some((oldMember) =>
+        (group.members || []).some((member) => String(member.id || '') === String(oldMember.id || '')),
+      ));
+    if (!previous?.project) return;
+    group.project = previous.project;
+    group.roles = previous.roles || group.roles || {};
   });
 }
 
