@@ -231,14 +231,20 @@ async function routeRequest(request, response, context) {
 
   if (url.pathname === '/api/state' && request.method === 'GET') {
     if (!requireAccess(request, response, context)) return;
-    sendJson(response, 200, await readState(context.dataDir, context.env));
+    const user = getSessionUser(request, context.sessions, context.env);
+    sendJson(response, 200, filterStateForUser(await readState(context.dataDir, context.env), user));
     return;
   }
 
   if (url.pathname === '/api/state' && request.method === 'PUT') {
     if (!requireAccess(request, response, context)) return;
     const body = await readBody(request);
-    const state = JSON.parse(body || '{}');
+    const incomingState = JSON.parse(body || '{}');
+    validateStateShape(incomingState);
+    const user = getSessionUser(request, context.sessions, context.env);
+    const state = user?.role === 'student'
+      ? mergeStudentState(await readState(context.dataDir, context.env), incomingState, user)
+      : incomingState;
     validateStateShape(state);
     await writeState(context.dataDir, state, context.env);
     sendJson(response, 200, { ok: true });
@@ -699,7 +705,12 @@ function verifySessionToken(token, env = process.env) {
 }
 
 function getSessionSecret(env = process.env) {
-  return String(env.SESSION_SECRET || env.APP_ACCESS_CODE || 'service-design-studio-dev-session-secret').trim();
+  const secret = String(env.SESSION_SECRET || env.APP_ACCESS_CODE || '').trim();
+  if (secret) return secret;
+  if (userAccountsEnabled(env)) {
+    throw new Error('服务器缺少 SESSION_SECRET，已拒绝签发或验证登录令牌。请在 Render 环境变量中配置随机强密钥。');
+  }
+  return 'local-access-disabled-session-secret';
 }
 
 function toPublicUser(user) {
@@ -763,6 +774,61 @@ function extractRosterStudents(state = {}) {
     name: String(member.name || '').trim(),
     className: String(member.className || group.className || '').trim(),
   }))).filter((student) => student.id && student.name);
+}
+
+function filterStateForUser(state = {}, user = null) {
+  if (user?.role !== 'student') return state;
+  const group = findStudentGroup(state, user.studentId);
+  if (!group) return { ...state, groups: [], gradebook: {}, studentText: '' };
+  return {
+    ...state,
+    studentText: [user.studentId, user.name, user.className].filter(Boolean).join(' '),
+    groups: [group],
+    gradebook: {},
+    feedbackEntries: (Array.isArray(state.feedbackEntries) ? state.feedbackEntries : []).filter((entry) =>
+      String(entry.studentId || '') === String(user.studentId || '') || String(entry.groupName || '') === String(group.name || ''),
+    ),
+  };
+}
+
+function mergeStudentState(currentState = {}, incomingState = {}, user = {}) {
+  const currentGroups = Array.isArray(currentState.groups) ? currentState.groups : [];
+  const incomingGroups = Array.isArray(incomingState.groups) ? incomingState.groups : [];
+  const groupIndex = currentGroups.findIndex((group) =>
+    (group.members || []).some((member) => normalizeStudentId(member.id || member.studentId) === normalizeStudentId(user.studentId)),
+  );
+  if (groupIndex < 0) return currentState;
+  const currentGroup = currentGroups[groupIndex];
+  const incomingGroup = incomingGroups.find((group) => group.id === currentGroup.id) || incomingGroups[0] || {};
+  const nextGroups = currentGroups.map((group, index) => {
+    if (index !== groupIndex) return group;
+    return {
+      ...group,
+      project: incomingGroup.project || group.project,
+      roles: group.roles || {},
+      members: group.members || [],
+    };
+  });
+  const currentFeedback = Array.isArray(currentState.feedbackEntries) ? currentState.feedbackEntries : [];
+  const incomingFeedback = Array.isArray(incomingState.feedbackEntries) ? incomingState.feedbackEntries : [];
+  const allowedIncomingFeedback = incomingFeedback.filter((entry) =>
+    String(entry.studentId || '') === String(user.studentId || '') || String(entry.groupName || '') === String(currentGroup.name || ''),
+  );
+  const feedbackById = new Map(currentFeedback.map((entry) => [String(entry.id || ''), entry]));
+  allowedIncomingFeedback.forEach((entry) => {
+    if (entry?.id) feedbackById.set(String(entry.id), entry);
+  });
+  return {
+    ...currentState,
+    groups: nextGroups,
+    feedbackEntries: [...feedbackById.values()],
+  };
+}
+
+function findStudentGroup(state = {}, studentId = '') {
+  return (Array.isArray(state.groups) ? state.groups : []).find((group) =>
+    (group.members || []).some((member) => normalizeStudentId(member.id || member.studentId) === normalizeStudentId(studentId)),
+  );
 }
 
 function normalizeRosterName(value) {
