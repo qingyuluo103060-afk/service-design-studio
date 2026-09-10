@@ -7,6 +7,7 @@ import {
   calculateCompetencyProfile,
   calculateStageProgress,
   classifyKano,
+  classifyImportanceSatisfaction,
   createGroups,
   createRandomGroups,
   COURSE_MODULES,
@@ -108,8 +109,9 @@ assert.deepEqual(calculateStageProgress(project), {
   overall: 50,
 });
 
-assert.equal(classifyKano(5, 1), '魅力型需求');
-assert.equal(classifyKano(5, 3), '期望型需求');
+assert.equal(classifyKano(5, 1), '高优先改进');
+assert.equal(classifyImportanceSatisfaction(5, 1), '高优先改进');
+assert.equal(classifyKano(5, 3), '重点优化');
 assert.equal(classifyKano(2, 5), '低优先级需求');
 assert.equal(classifyKano(1, 1), '观察型需求');
 
@@ -138,8 +140,28 @@ const kanoAnalysis = analyzeKanoResponses([
 ]);
 assert.equal(kanoAnalysis.length, 2);
 assert.equal(kanoAnalysis[0].need, '候诊提醒');
-assert.equal(kanoAnalysis[0].dominantCategory, '期望型需求');
+assert.equal(kanoAnalysis[0].dominantCategory, '基本型需求');
 assert.equal(kanoAnalysis[1].dominantCategory, '魅力型需求');
+
+const standardKanoMustBeCases = analyzeKanoResponses([
+  { need: '基础导诊', functional: '理应如此', dysfunctional: '理应如此' },
+  { need: '基础导诊', functional: '理应如此', dysfunctional: '无所谓' },
+  { need: '基础导诊', functional: '理应如此', dysfunctional: '可以忍受' },
+]);
+assert.equal(
+  standardKanoMustBeCases[0].dominantCategory,
+  '基本型需求',
+  'standard Kano matrix should classify must/neutral/tolerate dysfunctional answers as must-be',
+);
+assert.equal(standardKanoMustBeCases[0].counts.基本型需求, 3);
+
+const kanoWithInvalidAnswers = analyzeKanoResponses([
+  { need: '候诊状态提醒', functional: '喜欢', dysfunctional: '不喜欢' },
+  { need: '候诊状态提醒', functional: '喜欢', dysfunctional: '不喜欢' },
+  { need: '候诊状态提醒', functional: '不喜欢', dysfunctional: '喜欢' },
+]);
+assert.equal(kanoWithInvalidAnswers[0].dominantCategory, '期望型需求');
+assert.equal(kanoWithInvalidAnswers[0].validTotal, 2, 'Better-Worse denominator should exclude reverse and questionable answers');
 
 const ranked = rankByTopsis(
   [
@@ -186,6 +208,19 @@ assert.equal(normalizeGeneratedText('**标题**\n* 要点\n|A|B|').includes('*')
 const parsedAhp = parseAhpMatrixCsv('需求,候诊提醒,导诊清晰\n候诊提醒,1,3\n导诊清晰,0.333,1');
 assert.deepEqual(parsedAhp.labels, ['候诊提醒', '导诊清晰']);
 assert.equal(parsedAhp.matrix[0][1], 3);
+assert.deepEqual(parsedAhp.errors, []);
+
+const invalidAhp = parseAhpMatrixCsv('需求,A,B\nA,1,abc\nB,0.5,1');
+assert.ok(invalidAhp.errors.some((error) => error.includes('非数字')));
+
+const nonReciprocalAhp = parseAhpMatrixCsv('需求,A,B\nA,1,5\nB,0.5,1');
+assert.ok(nonReciprocalAhp.warnings.some((warning) => warning.includes('互反')));
+
+const oversizedAhp = calculateAhpConsistency(Array.from({ length: 10 }, (_, row) =>
+  Array.from({ length: 10 }, (_, col) => (row === col ? 1 : 1)),
+));
+assert.equal(oversizedAhp.consistent, false);
+assert.ok(oversizedAhp.error.includes('≤9'));
 
 const parsedTopsis = parseTopsisMatrixCsv('方案,创新性,风险\n方案A,4,2\n方案B,5,4');
 assert.equal(parsedTopsis.items.length, 2);
